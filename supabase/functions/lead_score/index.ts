@@ -12,6 +12,7 @@ interface TrendingKeyword {
   keyword: string;
   related_subreddit: string;
   user_id: string;
+  trend_score_id: string;
 }
 
 interface RedditPost {
@@ -78,15 +79,30 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch trending keywords with user_id
+    // Parse request body for optional parameters
+    let batchSize = 10;
+
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        if (body.batch_size) batchSize = body.batch_size;
+      } catch {
+        // Ignore JSON parse errors, use defaults
+      }
+    }
+
+    // Fetch trending keywords with batching
+    // Process oldest last_processed_at first to ensure fair rotation
     const { data: trendScores, error: trendError } = await supabase
       .from("trend_scores")
       .select(`
+        id,
         keyword_id,
         monitored_keywords!inner(id, keyword, related_subreddit, user_id)
       `)
       .eq("is_trending", true)
-      .order("calculated_at", { ascending: false });
+      .order("last_processed_at", { ascending: true })
+      .limit(batchSize);
 
     if (trendError) {
       throw new Error(`Failed to fetch trending keywords: ${trendError.message}`);
@@ -108,7 +124,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Extract unique trending keywords
+    // Extract unique trending keywords with their trend_score_id
     const trendingKeywords: TrendingKeyword[] = [];
     const seenKeywordIds = new Set<string>();
 
@@ -121,6 +137,7 @@ Deno.serve(async (req: Request) => {
           keyword: keywordData.keyword,
           related_subreddit: keywordData.related_subreddit,
           user_id: keywordData.user_id,
+          trend_score_id: score.id,
         });
       }
     }
@@ -237,11 +254,12 @@ Deno.serve(async (req: Request) => {
             // NEW candidate created - proceed with AI scoring
             log.candidatesCreated++;
 
-            // Check if lead already exists for this post
+            // Check if lead already exists for this post AND this user
             const { data: existingLead } = await supabase
               .from("leads")
               .select("id")
               .eq("reddit_post_id", post.id)
+              .eq("user_id", keyword.user_id)
               .maybeSingle();
 
             if (!existingLead) {
@@ -325,6 +343,12 @@ Deno.serve(async (req: Request) => {
       } catch (error) {
         log.errors.push(`Processing error: ${error.message}`);
       }
+
+      // Update last_processed_at for batching rotation
+      await supabase
+        .from("trend_scores")
+        .update({ last_processed_at: new Date().toISOString() })
+        .eq("id", keyword.trend_score_id);
 
       executionLogs.push(log);
     }
