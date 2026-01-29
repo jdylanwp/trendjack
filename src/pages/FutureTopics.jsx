@@ -1,0 +1,325 @@
+import { useState, useEffect } from 'react';
+import { TrendingUp, Zap, Clock, BarChart3, Flame } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+export default function FutureTopics() {
+  const [topics, setTopics] = useState([]);
+  const [trendingKeywords, setTrendingKeywords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedKeyword, setSelectedKeyword] = useState(null);
+  const [timeRange, setTimeRange] = useState('24h');
+
+  useEffect(() => {
+    fetchData();
+  }, [timeRange]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const { data: scores, error: scoresError } = await supabase
+        .from('trend_scores')
+        .select(`
+          keyword_id,
+          z_score,
+          heat_score,
+          is_trending,
+          calculated_at,
+          monitored_keywords!inner(id, keyword)
+        `)
+        .order('calculated_at', { ascending: false });
+
+      if (scoresError) throw scoresError;
+
+      const keywordMap = new Map();
+      scores?.forEach(score => {
+        const keywordData = score.monitored_keywords;
+        if (!keywordMap.has(keywordData.id)) {
+          keywordMap.set(keywordData.id, {
+            id: keywordData.id,
+            keyword: keywordData.keyword,
+            zScore: score.z_score || 0,
+            heatScore: score.heat_score || 0,
+            isTrending: score.is_trending,
+            lastCalculated: score.calculated_at
+          });
+        }
+      });
+
+      const trending = Array.from(keywordMap.values())
+        .sort((a, b) => (b.zScore || 0) - (a.zScore || 0));
+
+      setTrendingKeywords(trending);
+
+      if (trending.length > 0 && !selectedKeyword) {
+        setSelectedKeyword(trending[0].id);
+      }
+
+      await fetchTopicsForKeyword(selectedKeyword || trending[0]?.id);
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTopicsForKeyword = async (keywordId) => {
+    if (!keywordId) return;
+
+    try {
+      const cutoffDate = new Date();
+      if (timeRange === '24h') cutoffDate.setHours(cutoffDate.getHours() - 24);
+      else if (timeRange === '7d') cutoffDate.setDate(cutoffDate.getDate() - 7);
+      else cutoffDate.setDate(cutoffDate.getDate() - 30);
+
+      const { data, error } = await supabase
+        .from('related_topics')
+        .select('topic, frequency_count, last_seen_at')
+        .eq('keyword_id', keywordId)
+        .gte('last_seen_at', cutoffDate.toISOString())
+        .order('frequency_count', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      const enrichedTopics = (data || []).map(topic => ({
+        ...topic,
+        growthRate: calculateGrowthRate(topic),
+        isHot: topic.frequency_count > 10,
+      }));
+
+      setTopics(enrichedTopics);
+    } catch (err) {
+      console.error('Failed to fetch topics:', err);
+    }
+  };
+
+  const calculateGrowthRate = (topic) => {
+    const hoursSinceLastSeen = (new Date() - new Date(topic.last_seen_at)) / (1000 * 60 * 60);
+    if (hoursSinceLastSeen < 1) return 'explosive';
+    if (hoursSinceLastSeen < 6) return 'heating';
+    return 'stable';
+  };
+
+  const handleKeywordChange = async (keywordId) => {
+    setSelectedKeyword(keywordId);
+    await fetchTopicsForKeyword(keywordId);
+  };
+
+  const getGrowthColor = (growthRate) => {
+    if (growthRate === 'explosive') return '#10b981';
+    if (growthRate === 'heating') return '#f59e0b';
+    return '#64748b';
+  };
+
+  const chartData = topics.slice(0, 15).map(topic => ({
+    name: topic.topic,
+    count: topic.frequency_count,
+    growthRate: topic.growthRate
+  }));
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex items-center gap-2 text-slate-400">
+          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+          <span>Loading prediction engine...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedKeywordData = trendingKeywords.find(k => k.id === selectedKeyword);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
+            <Zap className="text-emerald-400" size={32} />
+            Future Topics
+          </h1>
+          <p className="text-slate-400 mt-2">
+            Prediction engine tracking emerging problems before they become mainstream
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="terminal-card">
+          <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+            <TrendingUp className="text-emerald-400" size={18} />
+            Monitored Keywords
+          </h3>
+          <div className="space-y-2">
+            {trendingKeywords.map(keyword => (
+              <button
+                key={keyword.id}
+                onClick={() => handleKeywordChange(keyword.id)}
+                className={`w-full text-left px-4 py-3 rounded-lg transition-all ${
+                  selectedKeyword === keyword.id
+                    ? 'bg-emerald-900/30 border border-emerald-500'
+                    : 'bg-slate-800/50 border border-slate-700 hover:border-emerald-500/50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-slate-100">{keyword.keyword}</span>
+                  {keyword.isTrending && (
+                    <Flame className="text-orange-400" size={16} />
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-400">
+                  <span>Z-Score: {keyword.zScore?.toFixed(2) || '0.00'}</span>
+                  <span>Heat: {keyword.heatScore?.toFixed(2) || '0.00'}</span>
+                </div>
+              </button>
+            ))}
+            {trendingKeywords.length === 0 && (
+              <p className="text-slate-500 text-sm text-center py-4">
+                No keywords configured yet. Add some in Settings.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 space-y-6">
+          {selectedKeywordData && (
+            <div className="terminal-card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  <BarChart3 className="text-emerald-400" size={18} />
+                  Topic Frequency for "{selectedKeywordData.keyword}"
+                </h3>
+                <div className="flex gap-2">
+                  {['24h', '7d', '30d'].map(range => (
+                    <button
+                      key={range}
+                      onClick={() => setTimeRange(range)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                        timeRange === range
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {range}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={chartData}>
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: '#94a3b8', fontSize: 12 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                    />
+                    <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                        color: '#f1f5f9'
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={getGrowthColor(entry.growthRate)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center py-12 text-slate-500">
+                  No topics discovered yet. The prediction engine needs time to analyze news patterns.
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="terminal-card">
+            <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+              <Clock className="text-emerald-400" size={18} />
+              Emerging Topics
+            </h3>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {topics.map((topic, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: getGrowthColor(topic.growthRate) }}
+                    ></div>
+                    <div>
+                      <p className="text-slate-100 font-medium capitalize">{topic.topic}</p>
+                      <p className="text-xs text-slate-500">
+                        Last seen: {new Date(topic.last_seen_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-sm text-slate-400">Mentions</p>
+                      <p className="text-lg font-bold text-emerald-400">{topic.frequency_count}</p>
+                    </div>
+                    {topic.isHot && (
+                      <Flame className="text-orange-400" size={20} />
+                    )}
+                  </div>
+                </div>
+              ))}
+              {topics.length === 0 && (
+                <div className="text-center py-12 text-slate-500">
+                  No topics found for this time range.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="terminal-card bg-gradient-to-r from-slate-800/50 to-emerald-900/20 border-emerald-500/30">
+        <div className="flex items-start gap-4">
+          <Zap className="text-emerald-400 flex-shrink-0 mt-1" size={24} />
+          <div>
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">How It Works</h3>
+            <p className="text-slate-300 text-sm leading-relaxed mb-3">
+              The prediction engine analyzes news headlines to discover emerging topics related to your monitored keywords.
+              It tracks word frequency and velocity to identify problems before they become mainstream.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <div className="bg-slate-800/50 p-3 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                  <span className="text-xs font-semibold text-emerald-400">EXPLOSIVE</span>
+                </div>
+                <p className="text-xs text-slate-400">Seen in the last hour - immediate opportunity</p>
+              </div>
+              <div className="bg-slate-800/50 p-3 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                  <span className="text-xs font-semibold text-amber-400">HEATING</span>
+                </div>
+                <p className="text-xs text-slate-400">Seen in last 6 hours - growing trend</p>
+              </div>
+              <div className="bg-slate-800/50 p-3 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 bg-slate-500 rounded-full"></div>
+                  <span className="text-xs font-semibold text-slate-400">STABLE</span>
+                </div>
+                <p className="text-xs text-slate-400">Consistent baseline - monitor for changes</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

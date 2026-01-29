@@ -22,7 +22,22 @@ interface ExecutionLog {
   newsItemsFetched: number;
   newsItemsInserted: number;
   bucketsUpdated: number;
+  topicsDiscovered: number;
   errors: string[];
+}
+
+const STOP_WORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
+  "is", "are", "was", "were", "be", "this", "that", "new", "how", "why", "what",
+  "top", "best", "vs", "review", "guide", "2024", "2025", "2026", "daily", "weekly",
+  "about", "from", "says", "after", "over", "more", "than", "into", "here", "when"
+]);
+
+function extractTopics(text: string): string[] {
+  const cleanText = text.toLowerCase().replace(/[^\w\s]/g, '');
+  return cleanText.split(/\s+/)
+    .filter(w => w.length > 3 && !STOP_WORDS.has(w))
+    .slice(0, 10);
 }
 
 Deno.serve(async (req: Request) => {
@@ -81,6 +96,7 @@ Deno.serve(async (req: Request) => {
         newsItemsFetched: 0,
         newsItemsInserted: 0,
         bucketsUpdated: 0,
+        topicsDiscovered: 0,
         errors: [],
       };
 
@@ -95,6 +111,7 @@ Deno.serve(async (req: Request) => {
         // Process each news item
         const newsItems = [];
         const bucketCounts = new Map<string, number>();
+        const discoveredTopics = new Set<string>();
 
         for (const item of feed.items) {
           const canonicalUrl = normalizeUrl(item.link || "");
@@ -117,6 +134,29 @@ Deno.serve(async (req: Request) => {
           const bucketKey = bucketStart.toISOString();
 
           bucketCounts.set(bucketKey, (bucketCounts.get(bucketKey) || 0) + 1);
+
+          // Extract topics for prediction engine
+          const potentialTopics = extractTopics(item.title || "");
+          potentialTopics.forEach(topic => {
+            if (topic !== keyword.keyword.toLowerCase()) {
+              discoveredTopics.add(topic);
+            }
+          });
+        }
+
+        // Store discovered topics (fire-and-forget for performance)
+        if (discoveredTopics.size > 0) {
+          const topicPromises = Array.from(discoveredTopics).map(topic =>
+            supabase.rpc('upsert_related_topic', {
+              p_keyword_id: keyword.id,
+              p_topic: topic
+            })
+          );
+
+          Promise.allSettled(topicPromises).then(results => {
+            const successCount = results.filter(r => r.status === 'fulfilled').length;
+            log.topicsDiscovered = successCount;
+          });
         }
 
         // Insert news items (idempotent with ON CONFLICT DO NOTHING)

@@ -24,6 +24,8 @@ interface ExecutionLog {
   current24hCount: number;
   baseline: number;
   heatScore: number;
+  zScore: number;
+  standardDeviation: number;
   isTrending: boolean;
   errors: string[];
 }
@@ -82,6 +84,8 @@ Deno.serve(async (req: Request) => {
         current24hCount: 0,
         baseline: 0,
         heatScore: 0,
+        zScore: 0,
+        standardDeviation: 0,
         isTrending: false,
         errors: [],
       };
@@ -127,20 +131,37 @@ Deno.serve(async (req: Request) => {
         );
         log.current24hCount = current24hCount;
 
-        // Calculate baseline (average of all buckets)
+        // Calculate baseline (mean of all buckets)
         const totalCount = typedBuckets.reduce(
           (sum, bucket) => sum + bucket.news_count,
           0
         );
-        const baseline = totalCount / typedBuckets.length;
-        log.baseline = parseFloat(baseline.toFixed(2));
+        const mean = totalCount / typedBuckets.length;
+        log.baseline = parseFloat(mean.toFixed(2));
 
-        // Calculate heat score
-        const heatScore = (current24hCount - baseline) / (baseline + 1);
+        // Calculate variance (how "noisy" is this keyword usually?)
+        const variance = typedBuckets.reduce((sum, bucket) => {
+          return sum + Math.pow(bucket.news_count - mean, 2);
+        }, 0) / typedBuckets.length;
+
+        // Calculate standard deviation (the "normal range")
+        const stdDev = Math.sqrt(variance);
+        log.standardDeviation = parseFloat(stdDev.toFixed(2));
+
+        // Calculate Z-Score (the "explosive score")
+        // Formula: (Current Volume - Average) / Volatility
+        // If stdDev is 0 (flat line), Z-Score is 0
+        const zScore = stdDev === 0 ? 0 : (current24hCount - mean) / stdDev;
+        log.zScore = parseFloat(zScore.toFixed(2));
+
+        // Calculate legacy heat score for backward compatibility
+        const heatScore = (current24hCount - mean) / (mean + 1);
         log.heatScore = parseFloat(heatScore.toFixed(2));
 
-        // Determine if trending
-        const isTrending = heatScore >= 1.0 && current24hCount >= 5;
+        // Determine if trending using Z-Score
+        // Z-Score > 1.5 = 86.6% confidence this is an anomaly
+        // Z-Score > 1.96 = 95% confidence (Hockey Stick)
+        const isTrending = zScore > 1.5 && current24hCount >= 5;
         log.isTrending = isTrending;
 
         // Insert trend score (idempotent with unique constraint on keyword_id, window_hours, date)
@@ -150,8 +171,12 @@ Deno.serve(async (req: Request) => {
             keyword_id: keyword.id,
             window_hours: windowHours,
             heat_score: heatScore,
+            z_score: zScore,
+            standard_deviation: stdDev,
             baseline: {
-              average: baseline,
+              mean: mean,
+              stdDev: stdDev,
+              current24h: current24hCount,
               totalBuckets: typedBuckets.length,
               current24hBuckets: current24hBuckets.length,
             },
@@ -181,6 +206,7 @@ Deno.serve(async (req: Request) => {
           trendingKeywords: trendingKeywords.map((log) => ({
             keyword: log.keyword,
             heatScore: log.heatScore,
+            zScore: log.zScore,
             current24hCount: log.current24hCount,
           })),
         },

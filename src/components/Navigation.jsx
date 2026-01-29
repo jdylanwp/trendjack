@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { TrendingUp, Target, Settings } from 'lucide-react';
+import { TrendingUp, Target, Settings, Zap } from 'lucide-react';
 
 export default function Navigation() {
   return (
@@ -38,6 +38,19 @@ export default function Navigation() {
               >
                 <Target size={18} />
                 Leads
+              </NavLink>
+              <NavLink
+                to="/future-topics"
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-slate-900 text-emerald-400'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  }`
+                }
+              >
+                <Zap size={18} />
+                Future Topics
               </NavLink>
               <NavLink
                 to="/settings"
