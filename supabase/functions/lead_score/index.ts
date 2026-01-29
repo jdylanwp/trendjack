@@ -212,53 +212,61 @@ Deno.serve(async (req: Request) => {
                 reason: reasons.join("; "),
               });
 
-            if (!candidateError || candidateError.message.includes("duplicate")) {
-              log.candidatesCreated++;
+            // CRITICAL: If duplicate, we already processed this post. SKIP to prevent cost leaks.
+            if (candidateError && candidateError.message.includes("duplicate")) {
+              continue;
+            }
 
-              // Check if lead already exists for this post
-              const { data: existingLead } = await supabase
-                .from("leads")
-                .select("id")
-                .eq("reddit_post_id", post.id)
-                .maybeSingle();
-
-              if (!existingLead) {
-                // Call AI to score the post
-                try {
-                  const aiResponse = await scorePostWithAI(
-                    post,
-                    keyword.keyword,
-                    openRouterApiKey,
-                    offerContext
-                  );
-                  log.aiCallsMade++;
-
-                  // Only save if intent score is high enough
-                  if (aiResponse.intent_score >= 75) {
-                    const { error: leadError } = await supabase
-                      .from("leads")
-                      .insert({
-                        keyword_id: keyword.id,
-                        reddit_post_id: post.id,
-                        intent_score: aiResponse.intent_score,
-                        pain_point: aiResponse.pain_point,
-                        suggested_reply: aiResponse.suggested_reply,
-                        ai_analysis: aiResponse,
-                        status: "new",
-                      });
-
-                    if (!leadError || leadError.message.includes("duplicate")) {
-                      log.leadsCreated++;
-                    } else {
-                      log.errors.push(`Lead insert error: ${leadError.message}`);
-                    }
-                  }
-                } catch (aiError) {
-                  log.errors.push(`AI scoring error: ${aiError.message}`);
-                }
-              }
-            } else {
+            // If other error, log it and skip
+            if (candidateError) {
               log.errors.push(`Candidate insert error: ${candidateError.message}`);
+              continue;
+            }
+
+            // NEW candidate created - proceed with AI scoring
+            log.candidatesCreated++;
+
+            // Check if lead already exists for this post
+            const { data: existingLead } = await supabase
+              .from("leads")
+              .select("id")
+              .eq("reddit_post_id", post.id)
+              .maybeSingle();
+
+            if (!existingLead) {
+              // Call AI to score the post
+              try {
+                const aiResponse = await scorePostWithAI(
+                  post,
+                  keyword.keyword,
+                  openRouterApiKey,
+                  offerContext
+                );
+                log.aiCallsMade++;
+
+                // Only save if intent score is high enough
+                if (aiResponse.intent_score >= 75) {
+                  const { error: leadError } = await supabase
+                    .from("leads")
+                    .insert({
+                      keyword_id: keyword.id,
+                      reddit_post_id: post.id,
+                      intent_score: aiResponse.intent_score,
+                      pain_point: aiResponse.pain_point,
+                      suggested_reply: aiResponse.suggested_reply,
+                      ai_analysis: aiResponse,
+                      status: "new",
+                    });
+
+                  if (!leadError || leadError.message.includes("duplicate")) {
+                    log.leadsCreated++;
+                  } else {
+                    log.errors.push(`Lead insert error: ${leadError.message}`);
+                  }
+                }
+              } catch (aiError) {
+                log.errors.push(`AI scoring error: ${aiError.message}`);
+              }
             }
           }
         }

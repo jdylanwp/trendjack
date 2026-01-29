@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { TrendingUp, Activity, Flame } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import CronTimer from '../components/CronTimer';
 
 export default function Dashboard() {
   const [trendData, setTrendData] = useState([]);
@@ -138,6 +139,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <CronTimer />
 
       <div className="terminal-card">
         <h2 className="text-xl font-bold text-slate-100 mb-4">Heat Score Trends</h2>
