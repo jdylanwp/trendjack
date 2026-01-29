@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { Clock, RefreshCw } from 'lucide-react';
 
 const CRON_SCHEDULES = {
-  'Trend Fetch': { cron: '0 * * * *', description: 'Every hour at :00' },
-  'Reddit Fetch': { cron: '15 * * * *', description: 'Every hour at :15' },
-  'Trend Score': { cron: '30 */2 * * *', description: 'Every 2 hours at :30' },
-  'Lead Score': { cron: '45 */2 * * *', description: 'Every 2 hours at :45' }
+  'Trend Fetch': { cron: '*/10 * * * *', description: 'Every 10 minutes' },
+  'Reddit Fetch': { cron: '5,15,25,35,45,55 * * * *', description: 'Every 10 minutes (offset)' },
+  'Trend Score': { cron: '*/30 * * * *', description: 'Every 30 minutes' },
+  'Lead Score': { cron: '15,45 * * * *', description: 'Every 30 minutes (offset)' }
 };
 
 function getNextCronTime(cronExpression) {
@@ -14,34 +14,33 @@ function getNextCronTime(cronExpression) {
   const currentMinute = now.getUTCMinutes();
   const currentHour = now.getUTCHours();
 
-  let targetMinute = parseInt(minute.replace('*/', ''));
-  let targetHour = currentHour;
+  let targetMinutes = [];
 
-  if (hour.includes('*/')) {
-    const interval = parseInt(hour.replace('*/', ''));
-    const nextHourSlot = Math.ceil((currentHour + 1) / interval) * interval;
-
-    if (currentMinute >= targetMinute) {
-      targetHour = nextHourSlot;
-    } else {
-      const currentSlot = Math.floor(currentHour / interval) * interval;
-      targetHour = currentSlot;
-      if (currentHour > targetHour || (currentHour === targetHour && currentMinute >= targetMinute)) {
-        targetHour = nextHourSlot;
-      }
+  if (minute.includes(',')) {
+    targetMinutes = minute.split(',').map(m => parseInt(m));
+  } else if (minute.includes('*/')) {
+    const interval = parseInt(minute.replace('*/', ''));
+    for (let i = 0; i < 60; i += interval) {
+      targetMinutes.push(i);
     }
-  } else if (hour === '*') {
-    if (currentMinute >= targetMinute) {
-      targetHour = (currentHour + 1) % 24;
-    }
+  } else if (minute === '*') {
+    targetMinutes = Array.from({ length: 60 }, (_, i) => i);
+  } else {
+    targetMinutes = [parseInt(minute)];
   }
 
   const nextRun = new Date(now);
-  nextRun.setUTCHours(targetHour, targetMinute, 0, 0);
+  nextRun.setUTCSeconds(0, 0);
 
-  if (nextRun <= now) {
-    nextRun.setUTCHours(nextRun.getUTCHours() + (hour.includes('*/2') ? 2 : 1));
+  for (const targetMinute of targetMinutes.sort((a, b) => a - b)) {
+    if (targetMinute > currentMinute) {
+      nextRun.setUTCMinutes(targetMinute);
+      return nextRun;
+    }
   }
+
+  nextRun.setUTCHours(currentHour + 1);
+  nextRun.setUTCMinutes(targetMinutes[0]);
 
   return nextRun;
 }
@@ -95,7 +94,7 @@ export default function CronTimer() {
         <h3 className="text-lg font-semibold text-slate-100">Automated Updates</h3>
       </div>
       <p className="text-xs text-slate-400 mb-4">
-        All functions run automatically on schedule. No manual triggers needed.
+        Functions process keywords in batches every 10-30 minutes. Your keywords cycle through automatically.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {Object.entries(timers).map(([name, data]) => (
@@ -121,7 +120,7 @@ export default function CronTimer() {
                 <div
                   className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-1000"
                   style={{
-                    width: `${Math.max(0, 100 - (data.remaining / (2 * 60 * 60 * 1000)) * 100)}%`
+                    width: `${Math.max(0, 100 - (data.remaining / (30 * 60 * 1000)) * 100)}%`
                   }}
                 ></div>
               </div>
@@ -131,7 +130,7 @@ export default function CronTimer() {
       </div>
       <div className="mt-4 p-3 bg-slate-900/30 border border-emerald-500/20 rounded-lg">
         <p className="text-xs text-slate-400">
-          <span className="text-emerald-400 font-semibold">Cost Protection Active:</span> Duplicate posts are automatically skipped to prevent redundant AI calls.
+          <span className="text-emerald-400 font-semibold">Smart Processing:</span> Usage limits enforced automatically. Duplicate analysis prevented to protect costs.
         </p>
       </div>
     </div>

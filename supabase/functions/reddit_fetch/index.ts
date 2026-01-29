@@ -53,11 +53,34 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    // Fetch all enabled keywords to get unique subreddits
-    const { data: keywords, error: keywordsError } = await supabase
+    // Parse request body for optional parameters
+    let batchSize = 50;
+    let specificKeywordId = null;
+
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        if (body.batch_size) batchSize = body.batch_size;
+        if (body.keyword_id) specificKeywordId = body.keyword_id;
+      } catch {
+        // Ignore JSON parse errors, use defaults
+      }
+    }
+
+    // Fetch enabled keywords with batching
+    let query = supabase
       .from("monitored_keywords")
       .select("id, keyword, related_subreddit")
-      .eq("enabled", true);
+      .eq("enabled", true)
+      .order("last_fetched_at", { ascending: true });
+
+    if (specificKeywordId) {
+      query = query.eq("id", specificKeywordId).limit(1);
+    } else {
+      query = query.limit(batchSize);
+    }
+
+    const { data: keywords, error: keywordsError } = await query;
 
     if (keywordsError) {
       throw new Error(`Failed to fetch keywords: ${keywordsError.message}`);
@@ -146,6 +169,18 @@ Deno.serve(async (req: Request) => {
           } else {
             log.postsInserted = redditPosts.length;
           }
+        }
+
+        // Update last_fetched_at for all keywords using this subreddit
+        const keywordsForSubreddit = typedKeywords
+          .filter(k => k.related_subreddit === subreddit)
+          .map(k => k.id);
+
+        if (keywordsForSubreddit.length > 0) {
+          await supabase
+            .from("monitored_keywords")
+            .update({ last_fetched_at: new Date().toISOString() })
+            .in("id", keywordsForSubreddit);
         }
       } catch (error) {
         log.errors.push(`Processing error: ${error.message}`);

@@ -41,36 +41,37 @@ Deno.serve(async (req: Request) => {
     const user = await userResponse.json();
     const userId = user.id;
 
-    const limitsResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/check_manual_run_limit`, {
+    // Check user's manual run limits
+    const limitsDataResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_user_tier_limits`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${supabaseServiceKey}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         "APIKey": supabaseServiceKey,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ p_user_id: userId }),
     });
 
-    const canRun = await limitsResponse.json();
+    const limitsData = await limitsDataResponse.json();
+    const userLimits = limitsData[0];
+
+    if (!userLimits) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unable to fetch user limits" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const canRun = userLimits.current_manual_runs < userLimits.max_manual_runs_per_month;
 
     if (!canRun) {
-      const limitsDataResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_user_tier_limits`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "APIKey": supabaseServiceKey,
-        },
-        body: JSON.stringify({ p_user_id: userId }),
-      });
-
-      const limitsData = await limitsDataResponse.json();
-      const limit = limitsData[0]?.max_manual_runs_per_month || 0;
-
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Manual refresh limit reached (${limit} per month). Upgrade your plan for more manual refreshes.`,
+          error: `Manual refresh limit reached (${userLimits.current_manual_runs}/${userLimits.max_manual_runs_per_month} per month). Upgrade your plan for more manual refreshes.`,
         }),
         {
           status: 429,

@@ -127,14 +127,23 @@ Deno.serve(async (req: Request) => {
 
     // Process each trending keyword
     for (const keyword of trendingKeywords) {
-      // Fetch user's offer context for this keyword
-      const { data: settingsData } = await supabase
-        .from("user_settings")
-        .select("offer_context")
-        .eq("user_id", keyword.user_id)
-        .maybeSingle();
+      // Fetch user's offer context and limits
+      const [settingsResult, limitsResult] = await Promise.all([
+        supabase
+          .from("user_settings")
+          .select("offer_context")
+          .eq("user_id", keyword.user_id)
+          .maybeSingle(),
+        supabase.rpc("get_user_tier_limits", { p_user_id: keyword.user_id })
+      ]);
 
-      const offerContext = settingsData?.offer_context || "";
+      const offerContext = settingsResult.data?.offer_context || "";
+      const userLimits = limitsResult.data?.[0];
+
+      if (!userLimits) {
+        continue;
+      }
+
       const log: ExecutionLog = {
         timestamp: new Date().toISOString(),
         keyword: keyword.keyword,
@@ -236,6 +245,18 @@ Deno.serve(async (req: Request) => {
               .maybeSingle();
 
             if (!existingLead) {
+              // Check if user has reached their AI analysis limit
+              if (userLimits.current_ai_analyses >= userLimits.max_ai_analyses_per_month) {
+                log.errors.push(`AI analysis limit reached for user ${keyword.user_id}`);
+                continue;
+              }
+
+              // Check if user has reached their leads limit
+              if (userLimits.current_leads >= userLimits.max_leads_per_month) {
+                log.errors.push(`Leads limit reached for user ${keyword.user_id}`);
+                continue;
+              }
+
               // Call AI to score the post
               try {
                 const aiResponse = await scorePostWithAI(
@@ -245,6 +266,20 @@ Deno.serve(async (req: Request) => {
                   offerContext
                 );
                 log.aiCallsMade++;
+
+                // Increment AI analysis usage
+                await supabase.rpc("increment_usage", {
+                  p_usage_type: "ai_analysis",
+                  p_user_id: keyword.user_id,
+                });
+
+                // Refresh limits after AI call
+                const { data: updatedLimits } = await supabase.rpc("get_user_tier_limits", {
+                  p_user_id: keyword.user_id,
+                });
+                if (updatedLimits?.[0]) {
+                  Object.assign(userLimits, updatedLimits[0]);
+                }
 
                 // Only save if intent score is high enough
                 if (aiResponse.intent_score >= 75) {
@@ -263,6 +298,20 @@ Deno.serve(async (req: Request) => {
 
                   if (!leadError || leadError.message.includes("duplicate")) {
                     log.leadsCreated++;
+
+                    // Increment leads usage
+                    await supabase.rpc("increment_usage", {
+                      p_usage_type: "lead",
+                      p_user_id: keyword.user_id,
+                    });
+
+                    // Refresh limits after lead creation
+                    const { data: finalLimits } = await supabase.rpc("get_user_tier_limits", {
+                      p_user_id: keyword.user_id,
+                    });
+                    if (finalLimits?.[0]) {
+                      Object.assign(userLimits, finalLimits[0]);
+                    }
                   } else {
                     log.errors.push(`Lead insert error: ${leadError.message}`);
                   }
