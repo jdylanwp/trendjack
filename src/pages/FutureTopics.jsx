@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, Zap, Clock, BarChart3, Flame, Sparkles, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Skeleton } from '../components/Skeleton';
 
 export default function FutureTopics() {
   const [topics, setTopics] = useState([]);
@@ -173,10 +174,55 @@ export default function FutureTopics() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center gap-2 text-slate-400">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-          <span>Loading prediction engine...</span>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
+              <Zap className="text-emerald-400" size={32} />
+              Future Topics
+            </h1>
+            <p className="text-slate-400 mt-2">
+              Prediction engine tracking emerging problems before they become mainstream
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="terminal-card">
+            <Skeleton width="w-48" height="h-5" className="mb-4" />
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="bg-slate-800/50 p-4 rounded-lg">
+                  <Skeleton width="w-32" height="h-4" className="mb-2" />
+                  <div className="flex items-center gap-3">
+                    <Skeleton width="w-20" height="h-3" />
+                    <Skeleton width="w-16" height="h-3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 space-y-6">
+            <div className="terminal-card">
+              <Skeleton width="w-64" height="h-5" className="mb-4" />
+              <Skeleton width="w-full" height="h-72" />
+            </div>
+
+            <div className="terminal-card">
+              <Skeleton width="w-48" height="h-5" className="mb-4" />
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-slate-800/50 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <Skeleton width="w-48" height="h-4" />
+                      <Skeleton width="w-16" height="h-6" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );

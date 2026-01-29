@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { TrendingUp, Activity, Flame } from 'lucide-react';
+import { TrendingUp, Activity, Flame, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CronTimer from '../components/CronTimer';
+import EmptyState from '../components/EmptyState';
+import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from '../components/Skeleton';
 
 export default function Dashboard() {
   const [trendData, setTrendData] = useState([]);
@@ -89,8 +91,20 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-emerald-400 text-xl">Loading dashboard...</div>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-100 mb-2">Dashboard</h1>
+          <p className="text-slate-400">Monitor trending keywords and heat scores over time</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+        </div>
+
+        <ChartSkeleton />
+        <TableSkeleton rows={5} />
       </div>
     );
   }
@@ -180,7 +194,13 @@ export default function Dashboard() {
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <p className="text-slate-400 text-center py-8">No trend data available yet. Run the trend_fetch and trend_score functions.</p>
+          <div className="text-center py-12">
+            <BarChart3 className="text-slate-600 mx-auto mb-4" size={48} />
+            <p className="text-slate-400">No trend data yet</p>
+            <p className="text-slate-500 text-sm mt-2">
+              The automated system will start collecting trend data shortly. Chart will populate as keywords are monitored.
+            </p>
+          </div>
         )}
       </div>
 
@@ -218,7 +238,13 @@ export default function Dashboard() {
             </table>
           </div>
         ) : (
-          <p className="text-slate-400 text-center py-8">No trending keywords at the moment.</p>
+          <div className="text-center py-12">
+            <Flame className="text-slate-600 mx-auto mb-4" size={48} />
+            <p className="text-slate-400">No trending keywords yet</p>
+            <p className="text-slate-500 text-sm mt-2">
+              Keywords will appear here when they show increased activity on Reddit. The system checks every 15 minutes.
+            </p>
+          </div>
         )}
       </div>
     </div>

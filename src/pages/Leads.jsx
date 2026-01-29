@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Copy, Check, ExternalLink, Filter } from 'lucide-react';
+import { Copy, Check, ExternalLink, Filter, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import EmptyState from '../components/EmptyState';
+import { StatCardSkeleton, LeadCardSkeleton } from '../components/Skeleton';
 
 export default function Leads() {
   const [leads, setLeads] = useState([]);
@@ -53,6 +55,12 @@ export default function Leads() {
   };
 
   const updateLeadStatus = async (leadId, newStatus) => {
+    const previousLeads = [...leads];
+
+    setLeads(leads.map(lead =>
+      lead.id === leadId ? { ...lead, status: newStatus } : lead
+    ));
+
     try {
       const { error } = await supabase
         .from('leads')
@@ -60,12 +68,9 @@ export default function Leads() {
         .eq('id', leadId);
 
       if (error) throw error;
-
-      setLeads(leads.map(lead =>
-        lead.id === leadId ? { ...lead, status: newStatus } : lead
-      ));
     } catch (error) {
       console.error('Error updating lead status:', error);
+      setLeads(previousLeads);
     }
   };
 
@@ -88,8 +93,31 @@ export default function Leads() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-emerald-400 text-xl">Loading leads...</div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-100 mb-2">Leads</h1>
+            <p className="text-slate-400">High-intent Reddit posts identified by AI</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Filter size={20} className="text-slate-400" />
+            <select className="terminal-input" disabled>
+              <option>All Status</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+        </div>
+
+        <div className="space-y-4">
+          <LeadCardSkeleton />
+          <LeadCardSkeleton />
+          <LeadCardSkeleton />
+        </div>
       </div>
     );
   }
@@ -249,14 +277,23 @@ export default function Leads() {
           ))}
         </div>
       ) : (
-        <div className="terminal-card text-center py-12">
-          <p className="text-slate-400 text-lg mb-2">No leads found</p>
-          <p className="text-slate-500 text-sm">
-            {statusFilter !== 'all'
-              ? `No leads with status "${statusFilter}"`
-              : 'Run the lead_score function to start discovering leads'}
-          </p>
-        </div>
+        <EmptyState
+          icon={Target}
+          title={statusFilter !== 'all' ? `No ${statusFilter} leads` : 'No leads yet'}
+          description={
+            statusFilter !== 'all'
+              ? `You don't have any leads with the status "${statusFilter}". Try changing the filter or wait for the automated system to discover new opportunities.`
+              : 'The system is actively scanning Reddit for high-intent posts. Leads will appear here automatically once the lead scoring function runs. Check back in a few minutes or configure your keywords in Settings.'
+          }
+          action={
+            statusFilter !== 'all'
+              ? null
+              : {
+                  href: '/settings',
+                  label: 'Configure Keywords',
+                }
+          }
+        />
       )}
     </div>
   );
