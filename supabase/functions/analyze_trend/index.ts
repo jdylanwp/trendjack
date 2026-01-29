@@ -243,7 +243,7 @@ Format your response as exactly 3 lines, one bullet point per line, no bullet sy
         "HTTP-Referer": "https://trendjack.app",
       },
       body: JSON.stringify({
-        model: "google/gemma-2-27b-it:free",
+        model: "google/gemma-3-27b-it:free",
         messages: [
           {
             role: "user",

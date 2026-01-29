@@ -432,14 +432,13 @@ Be strict - only score above 75 if there's clear buying intent or a specific pro
       "X-Title": "TrendJack",
     },
     body: JSON.stringify({
-      model: "google/gemma-2-27b-it:free",
+      model: "google/gemma-3-27b-it:free",
       messages: [
         {
           role: "user",
           content: prompt,
         },
       ],
-      response_format: { type: "json_object" },
     }),
   });
 
