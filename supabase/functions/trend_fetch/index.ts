@@ -23,6 +23,7 @@ interface ExecutionLog {
   newsItemsInserted: number;
   bucketsUpdated: number;
   topicsDiscovered: number;
+  globalEntitiesExtracted: number;
   errors: string[];
 }
 
@@ -121,6 +122,7 @@ Deno.serve(async (req: Request) => {
         newsItemsInserted: 0,
         bucketsUpdated: 0,
         topicsDiscovered: 0,
+        globalEntitiesExtracted: 0,
         errors: [],
       };
 
@@ -159,7 +161,7 @@ Deno.serve(async (req: Request) => {
 
           bucketCounts.set(bucketKey, (bucketCounts.get(bucketKey) || 0) + 1);
 
-          // Extract topics for prediction engine
+          // Legacy: Extract simple topics for backward compatibility
           const potentialTopics = extractTopics(item.title || "");
           potentialTopics.forEach(topic => {
             if (topic !== keyword.keyword.toLowerCase()) {
@@ -181,6 +183,36 @@ Deno.serve(async (req: Request) => {
             const successCount = results.filter(r => r.status === 'fulfilled').length;
             log.topicsDiscovered = successCount;
           });
+        }
+
+        // NEW: AI-powered entity extraction for global trend platform
+        if (newsItems.length > 0) {
+          const titles = newsItems.map(item => item.title).filter(t => t.length > 10);
+
+          if (titles.length >= 5) {
+            try {
+              const entityExtractUrl = `${supabaseUrl}/functions/v1/entity_extract`;
+              const entityResponse = await fetch(entityExtractUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  titles: titles,
+                  source: "news",
+                  batch_size: 20,
+                }),
+              });
+
+              if (entityResponse.ok) {
+                const entityData = await entityResponse.json();
+                log.globalEntitiesExtracted = entityData.extracted || 0;
+              }
+            } catch (entityError) {
+              log.errors.push(`Entity extraction failed: ${entityError.message}`);
+            }
+          }
         }
 
         // Insert news items (idempotent with ON CONFLICT DO NOTHING)
