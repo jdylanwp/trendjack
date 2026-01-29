@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Tag, AlertCircle, Briefcase } from 'lucide-react';
+import { Plus, Trash2, Tag, AlertCircle, Briefcase, Crown, TrendingUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import UpgradePrompt from '../components/UpgradePrompt';
 
 export default function Settings() {
   const { user } = useAuth();
+  const { subscription, limits, canAddKeyword, refreshLimits, tiers } = useSubscription();
   const [keywords, setKeywords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -125,6 +128,11 @@ export default function Settings() {
       return;
     }
 
+    if (!canAddKeyword()) {
+      setError(`You've reached your keyword limit (${limits?.max_keywords}). Upgrade to add more keywords.`);
+      return;
+    }
+
     try {
       setSubmitting(true);
       const { data, error } = await supabase
@@ -141,7 +149,8 @@ export default function Settings() {
 
       setSuccess('Keyword added successfully! It will be picked up in the next cron run.');
       setFormData({ keyword: '', subreddit: '' });
-      fetchKeywords();
+      await fetchKeywords();
+      await refreshLimits();
     } catch (err) {
       setError(`Failed to add keyword: ${err.message}`);
     } finally {
@@ -163,7 +172,8 @@ export default function Settings() {
       if (error) throw error;
 
       setSuccess(`Keyword "${keyword}" deleted successfully`);
-      fetchKeywords();
+      await fetchKeywords();
+      await refreshLimits();
     } catch (err) {
       setError(`Failed to delete keyword: ${err.message}`);
     }
@@ -184,6 +194,78 @@ export default function Settings() {
         <p className="text-slate-400">Manage monitored keywords and subreddits</p>
       </div>
 
+      {subscription && limits && (
+        <div className="terminal-card bg-gradient-to-r from-slate-800 to-slate-900 border-emerald-500/30">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-900/30 rounded-lg">
+                <Crown className="text-emerald-400" size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-100">{subscription.subscription_tiers?.name || limits.tier_name} Plan</h2>
+                <p className="text-slate-400 text-sm">{subscription.subscription_tiers?.description}</p>
+              </div>
+            </div>
+            {subscription.tier_id === 'free' && (
+              <button
+                onClick={() => alert('Payment integration coming soon! Contact sales@trendjack.com for early access.')}
+                className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-medium rounded-lg transition-all flex items-center gap-2"
+              >
+                <TrendingUp size={16} />
+                Upgrade
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-400">Keywords</span>
+                <span className="text-lg font-bold text-slate-100">
+                  {limits.current_keywords} / {limits.max_keywords}
+                </span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className="bg-emerald-500 h-2 rounded-full transition-all"
+                  style={{ width: `${Math.min((limits.current_keywords / limits.max_keywords) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-400">AI Analyses</span>
+                <span className="text-lg font-bold text-slate-100">
+                  {limits.current_ai_analyses} / {limits.max_ai_analyses_per_month}
+                </span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all"
+                  style={{ width: `${Math.min((limits.current_ai_analyses / limits.max_ai_analyses_per_month) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-400">Leads Discovered</span>
+                <span className="text-lg font-bold text-slate-100">
+                  {limits.current_leads} / {limits.max_leads_per_month}
+                </span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className="bg-amber-500 h-2 rounded-full transition-all"
+                  style={{ width: `${Math.min((limits.current_leads / limits.max_leads_per_month) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-900/20 border border-red-500 rounded-lg p-4 flex items-start gap-3">
           <AlertCircle className="text-red-400 flex-shrink-0" size={20} />
@@ -196,6 +278,15 @@ export default function Settings() {
           <Tag className="text-emerald-400 flex-shrink-0" size={20} />
           <p className="text-emerald-400">{success}</p>
         </div>
+      )}
+
+      {limits && limits.current_keywords >= limits.max_keywords && subscription?.tier_id !== 'enterprise' && (
+        <UpgradePrompt
+          feature={`You've reached your keyword limit. Upgrade to ${subscription?.tier_id === 'free' ? 'Pro' : 'Enterprise'} to monitor more keywords and discover more opportunities.`}
+          currentUsage={limits.current_keywords}
+          limit={limits.max_keywords}
+          targetTier={subscription?.tier_id === 'free' ? 'Pro' : 'Enterprise'}
+        />
       )}
 
       <div className="terminal-card">

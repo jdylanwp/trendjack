@@ -3,8 +3,11 @@ import { TrendingUp, Zap, Clock, BarChart3, Flame, Sparkles, Loader2 } from 'luc
 import { supabase } from '../lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Skeleton } from '../components/Skeleton';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import UpgradePrompt from '../components/UpgradePrompt';
 
 export default function FutureTopics() {
+  const { limits, canPerformAIAnalysis, trackUsage, subscription } = useSubscription();
   const [topics, setTopics] = useState([]);
   const [trendingKeywords, setTrendingKeywords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +117,18 @@ export default function FutureTopics() {
 
     if (analyzing[key]) return;
 
+    if (!canPerformAIAnalysis()) {
+      setAnalyses(prev => ({
+        ...prev,
+        [key]: {
+          summary: [`You've reached your AI analysis limit (${limits?.max_ai_analyses_per_month} per month). Upgrade to continue analyzing trends.`],
+          confidence: 'low',
+          newsCount: 0
+        }
+      }));
+      return;
+    }
+
     setAnalyzing(prev => ({ ...prev, [key]: true }));
 
     try {
@@ -144,6 +159,8 @@ export default function FutureTopics() {
           ...prev,
           [key]: result.analysis
         }));
+
+        await trackUsage('ai_analysis');
       }
     } catch (err) {
       console.error('Failed to analyze trend:', err);
@@ -243,6 +260,15 @@ export default function FutureTopics() {
           </p>
         </div>
       </div>
+
+      {limits && limits.current_ai_analyses >= limits.max_ai_analyses_per_month * 0.8 && subscription?.tier_id !== 'enterprise' && (
+        <UpgradePrompt
+          feature={`You're running low on AI analyses. Upgrade to ${subscription?.tier_id === 'free' ? 'Pro' : 'Enterprise'} to unlock ${subscription?.tier_id === 'free' ? '200' : '1000'} analyses per month.`}
+          currentUsage={limits.current_ai_analyses}
+          limit={limits.max_ai_analyses_per_month}
+          targetTier={subscription?.tier_id === 'free' ? 'Pro' : 'Enterprise'}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="terminal-card">
