@@ -7,12 +7,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface TrendingKeyword {
+interface MonitoredKeyword {
   id: string;
   keyword: string;
   related_subreddit: string;
   user_id: string;
-  trend_score_id: string;
+  last_processed_at: string | null;
 }
 
 interface RedditPost {
@@ -91,28 +91,24 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Fetch trending keywords with batching
+    // Fetch all enabled keywords with batching
     // Process oldest last_processed_at first to ensure fair rotation
-    const { data: trendScores, error: trendError } = await supabase
-      .from("trend_scores")
-      .select(`
-        id,
-        keyword_id,
-        monitored_keywords!inner(id, keyword, related_subreddit, user_id)
-      `)
-      .eq("is_trending", true)
-      .order("last_processed_at", { ascending: true })
+    const { data: keywords, error: keywordsError } = await supabase
+      .from("monitored_keywords")
+      .select("id, keyword, related_subreddit, user_id, last_processed_at")
+      .eq("enabled", true)
+      .order("last_processed_at", { ascending: true, nullsFirst: true })
       .limit(batchSize);
 
-    if (trendError) {
-      throw new Error(`Failed to fetch trending keywords: ${trendError.message}`);
+    if (keywordsError) {
+      throw new Error(`Failed to fetch monitored keywords: ${keywordsError.message}`);
     }
 
-    if (!trendScores || trendScores.length === 0) {
+    if (!keywords || keywords.length === 0) {
       return new Response(
         JSON.stringify({
           success: true,
-          message: "No trending keywords found",
+          message: "No enabled keywords found",
           executionLogs: [],
           startTime,
           endTime: new Date().toISOString(),
@@ -124,26 +120,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Extract unique trending keywords with their trend_score_id
-    const trendingKeywords: TrendingKeyword[] = [];
-    const seenKeywordIds = new Set<string>();
+    const monitoredKeywords: MonitoredKeyword[] = keywords as MonitoredKeyword[];
 
-    for (const score of trendScores) {
-      const keywordData = score.monitored_keywords as any;
-      if (!seenKeywordIds.has(keywordData.id)) {
-        seenKeywordIds.add(keywordData.id);
-        trendingKeywords.push({
-          id: keywordData.id,
-          keyword: keywordData.keyword,
-          related_subreddit: keywordData.related_subreddit,
-          user_id: keywordData.user_id,
-          trend_score_id: score.id,
-        });
-      }
-    }
-
-    // Process each trending keyword
-    for (const keyword of trendingKeywords) {
+    // Process each monitored keyword
+    for (const keyword of monitoredKeywords) {
       // Fetch user's offer context and limits
       const [settingsResult, limitsResult] = await Promise.all([
         supabase
@@ -346,9 +326,9 @@ Deno.serve(async (req: Request) => {
 
       // Update last_processed_at for batching rotation
       await supabase
-        .from("trend_scores")
+        .from("monitored_keywords")
         .update({ last_processed_at: new Date().toISOString() })
-        .eq("id", keyword.trend_score_id);
+        .eq("id", keyword.id);
 
       executionLogs.push(log);
     }
@@ -362,7 +342,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: true,
         summary: {
-          trendingKeywordsProcessed: trendingKeywords.length,
+          keywordsProcessed: monitoredKeywords.length,
           totalCandidatesCreated: totalCandidates,
           totalAICallsMade: totalAICalls,
           totalLeadsCreated: totalLeads,
