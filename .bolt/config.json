@@ -1,0 +1,17 @@
+{
+  "project": "TrendJack",
+  "version": "1.0.0",
+  "description": "Trend detection and lead discovery SaaS application",
+  "features": [
+    "Google News trend monitoring",
+    "Reddit lead discovery",
+    "AI-powered intent scoring",
+    "Real-time dashboard with charts",
+    "Lead management system"
+  ],
+  "stack": {
+    "frontend": ["React", "Vite", "Tailwind CSS", "Recharts"],
+    "backend": ["Supabase", "Edge Functions", "PostgreSQL"],
+    "ai": ["OpenRouter", "GPT-4o-mini"]
+  }
+}
