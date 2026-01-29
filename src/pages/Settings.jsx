@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Tag, AlertCircle, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-const SETTINGS_ID = '00000000-0000-0000-0000-000000000001';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Settings() {
+  const { user } = useAuth();
   const [keywords, setKeywords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,11 +40,13 @@ export default function Settings() {
   };
 
   const fetchOfferContext = async () => {
+    if (!user) return;
+
     try {
       const { data, error } = await supabase
         .from('user_settings')
         .select('offer_context')
-        .eq('id', SETTINGS_ID)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (error) throw error;
@@ -57,20 +59,40 @@ export default function Settings() {
   };
 
   const handleSaveOfferContext = async () => {
+    if (!user) return;
+
     setError(null);
     setSuccess(null);
 
     try {
       setSavingContext(true);
-      const { error } = await supabase
-        .from('user_settings')
-        .update({
-          offer_context: offerContext.trim(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', SETTINGS_ID);
 
-      if (error) throw error;
+      const { data: existing } = await supabase
+        .from('user_settings')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('user_settings')
+          .update({
+            offer_context: offerContext.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('user_settings')
+          .insert({
+            user_id: user.id,
+            offer_context: offerContext.trim()
+          });
+
+        if (error) throw error;
+      }
 
       setSuccess('Offer context saved! Future AI-generated replies will use this information.');
     } catch (err) {
@@ -93,6 +115,11 @@ export default function Settings() {
     setError(null);
     setSuccess(null);
 
+    if (!user) {
+      setError('You must be logged in to add keywords');
+      return;
+    }
+
     if (!formData.keyword.trim() || !formData.subreddit.trim()) {
       setError('Both keyword and subreddit are required');
       return;
@@ -103,6 +130,7 @@ export default function Settings() {
       const { data, error } = await supabase
         .from('monitored_keywords')
         .insert([{
+          user_id: user.id,
           keyword: formData.keyword.trim(),
           related_subreddit: formData.subreddit.trim().replace(/^r\//, ''),
           enabled: true

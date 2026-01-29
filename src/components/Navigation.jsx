@@ -1,7 +1,20 @@
-import { NavLink } from 'react-router-dom';
-import { TrendingUp, Target, Settings, Zap } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { TrendingUp, Target, Settings, Zap, LogOut, User } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Navigation() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Failed to log out:', error);
+    }
+  };
+
   return (
     <nav className="bg-slate-800 border-b border-slate-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -66,6 +79,19 @@ export default function Navigation() {
                 Settings
               </NavLink>
             </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-slate-300">
+              <User size={16} />
+              <span>{user?.email}</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+            >
+              <LogOut size={18} />
+              Logout
+            </button>
           </div>
         </div>
       </div>

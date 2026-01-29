@@ -11,6 +11,7 @@ interface TrendingKeyword {
   id: string;
   keyword: string;
   related_subreddit: string;
+  user_id: string;
 }
 
 interface RedditPost {
@@ -77,21 +78,12 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's offer context
-    const { data: settingsData, error: settingsError } = await supabase
-      .from("user_settings")
-      .select("offer_context")
-      .eq("id", "00000000-0000-0000-0000-000000000001")
-      .maybeSingle();
-
-    const offerContext = settingsData?.offer_context || "";
-
-    // Fetch trending keywords
+    // Fetch trending keywords with user_id
     const { data: trendScores, error: trendError } = await supabase
       .from("trend_scores")
       .select(`
         keyword_id,
-        monitored_keywords!inner(id, keyword, related_subreddit)
+        monitored_keywords!inner(id, keyword, related_subreddit, user_id)
       `)
       .eq("is_trending", true)
       .order("calculated_at", { ascending: false });
@@ -128,12 +120,21 @@ Deno.serve(async (req: Request) => {
           id: keywordData.id,
           keyword: keywordData.keyword,
           related_subreddit: keywordData.related_subreddit,
+          user_id: keywordData.user_id,
         });
       }
     }
 
     // Process each trending keyword
     for (const keyword of trendingKeywords) {
+      // Fetch user's offer context for this keyword
+      const { data: settingsData } = await supabase
+        .from("user_settings")
+        .select("offer_context")
+        .eq("user_id", keyword.user_id)
+        .maybeSingle();
+
+      const offerContext = settingsData?.offer_context || "";
       const log: ExecutionLog = {
         timestamp: new Date().toISOString(),
         keyword: keyword.keyword,
@@ -207,6 +208,7 @@ Deno.serve(async (req: Request) => {
             const { error: candidateError } = await supabase
               .from("lead_candidates")
               .insert({
+                user_id: keyword.user_id,
                 keyword_id: keyword.id,
                 reddit_post_id: post.id,
                 reason: reasons.join("; "),
@@ -249,6 +251,7 @@ Deno.serve(async (req: Request) => {
                   const { error: leadError } = await supabase
                     .from("leads")
                     .insert({
+                      user_id: keyword.user_id,
                       keyword_id: keyword.id,
                       reddit_post_id: post.id,
                       intent_score: aiResponse.intent_score,
