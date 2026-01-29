@@ -12,6 +12,6 @@
   "stack": {
     "frontend": ["React", "Vite", "Tailwind CSS", "Recharts"],
     "backend": ["Supabase", "Edge Functions", "PostgreSQL"],
-    "ai": ["OpenRouter", "google/gemma-3-27b-it:free"]
+    "ai": ["OpenRouter", "gemma-3-27b-it:free"]
   }
 }
