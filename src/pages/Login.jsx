@@ -20,7 +20,15 @@ export default function Login() {
       await signIn(email, password);
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Failed to sign in');
+      if (err.message?.includes('Invalid login credentials')) {
+        setError('Invalid email or password. Please try again.');
+      } else if (err.message?.includes('Email not confirmed')) {
+        setError('Please confirm your email address before signing in.');
+      } else if (err.status === 500) {
+        setError('Server error. Please try again or contact support if the issue persists.');
+      } else {
+        setError(err.message || 'Failed to sign in. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }

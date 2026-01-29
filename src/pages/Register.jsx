@@ -35,7 +35,15 @@ export default function Register() {
       setSuccess(true);
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
-      setError(err.message || 'Failed to create account');
+      if (err.message?.includes('already registered')) {
+        setError('This email is already registered. Please sign in instead.');
+      } else if (err.message?.includes('Invalid email')) {
+        setError('Please enter a valid email address.');
+      } else if (err.status === 500) {
+        setError('Server error. Please try again or contact support if the issue persists.');
+      } else {
+        setError(err.message || 'Failed to create account. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
