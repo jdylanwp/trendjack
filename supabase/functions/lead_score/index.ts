@@ -432,7 +432,7 @@ Be strict - only score above 75 if there's clear buying intent or a specific pro
       "X-Title": "TrendJack",
     },
     body: JSON.stringify({
-      model: "openai/gpt-4o-mini",
+      model: "google/gemma-2-27b-it:free",
       messages: [
         {
           role: "user",
