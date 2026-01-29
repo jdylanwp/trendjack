@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Zap, Clock, BarChart3, Flame } from 'lucide-react';
+import { TrendingUp, Zap, Clock, BarChart3, Flame, Sparkles, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -9,6 +9,8 @@ export default function FutureTopics() {
   const [loading, setLoading] = useState(true);
   const [selectedKeyword, setSelectedKeyword] = useState(null);
   const [timeRange, setTimeRange] = useState('24h');
+  const [analyses, setAnalyses] = useState({});
+  const [analyzing, setAnalyzing] = useState({});
 
   useEffect(() => {
     fetchData();
@@ -104,6 +106,57 @@ export default function FutureTopics() {
   const handleKeywordChange = async (keywordId) => {
     setSelectedKeyword(keywordId);
     await fetchTopicsForKeyword(keywordId);
+  };
+
+  const analyzeTrend = async (topic) => {
+    const key = `${selectedKeyword}-${topic}`;
+
+    if (analyzing[key]) return;
+
+    setAnalyzing(prev => ({ ...prev, [key]: true }));
+
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze_trend`;
+      const headers = {
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          keyword_id: selectedKeyword,
+          topic: topic,
+          hours: 48
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Analysis failed');
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        setAnalyses(prev => ({
+          ...prev,
+          [key]: result.analysis
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to analyze trend:', err);
+      setAnalyses(prev => ({
+        ...prev,
+        [key]: {
+          summary: ['Analysis failed. Please try again later.'],
+          confidence: 'low',
+          newsCount: 0
+        }
+      }));
+    } finally {
+      setAnalyzing(prev => ({ ...prev, [key]: false }));
+    }
   };
 
   const getGrowthColor = (growthRate) => {
@@ -246,35 +299,91 @@ export default function FutureTopics() {
               <Clock className="text-emerald-400" size={18} />
               Emerging Topics
             </h3>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {topics.map((topic, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: getGrowthColor(topic.growthRate) }}
-                    ></div>
-                    <div>
-                      <p className="text-slate-100 font-medium capitalize">{topic.topic}</p>
-                      <p className="text-xs text-slate-500">
-                        Last seen: {new Date(topic.last_seen_at).toLocaleString()}
-                      </p>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {topics.map((topic, index) => {
+                const key = `${selectedKeyword}-${topic.topic}`;
+                const analysis = analyses[key];
+                const isAnalyzing = analyzing[key];
+
+                return (
+                  <div
+                    key={index}
+                    className="bg-slate-800/50 rounded-lg border border-slate-700 hover:border-emerald-500/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between p-3">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: getGrowthColor(topic.growthRate) }}
+                        ></div>
+                        <div className="flex-1">
+                          <p className="text-slate-100 font-medium capitalize">{topic.topic}</p>
+                          <p className="text-xs text-slate-500">
+                            Last seen: {new Date(topic.last_seen_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-sm text-slate-400">Mentions</p>
+                          <p className="text-lg font-bold text-emerald-400">{topic.frequency_count}</p>
+                        </div>
+                        {topic.isHot && (
+                          <Flame className="text-orange-400 flex-shrink-0" size={20} />
+                        )}
+                        <button
+                          onClick={() => analyzeTrend(topic.topic)}
+                          disabled={isAnalyzing}
+                          className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition-colors"
+                        >
+                          {isAnalyzing ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Analyzing...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={14} />
+                              Why?
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm text-slate-400">Mentions</p>
-                      <p className="text-lg font-bold text-emerald-400">{topic.frequency_count}</p>
-                    </div>
-                    {topic.isHot && (
-                      <Flame className="text-orange-400" size={20} />
+                    {analysis && (
+                      <div className="px-3 pb-3 pt-0">
+                        <div className="bg-slate-900/50 border border-emerald-500/30 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Sparkles className="text-emerald-400" size={16} />
+                            <span className="text-xs font-semibold text-emerald-400 uppercase">
+                              AI Briefing
+                              {analysis.cached && ' (Cached)'}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              analysis.confidence === 'high' ? 'bg-emerald-900/50 text-emerald-400' :
+                              analysis.confidence === 'medium' ? 'bg-amber-900/50 text-amber-400' :
+                              'bg-slate-700 text-slate-400'
+                            }`}>
+                              {analysis.confidence} confidence
+                            </span>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {analysis.summary.map((bullet, i) => (
+                              <li key={i} className="text-sm text-slate-300 flex gap-2">
+                                <span className="text-emerald-400 flex-shrink-0">•</span>
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="text-xs text-slate-500 mt-2">
+                            Based on {analysis.newsCount} news items from the last {analysis.timeRange}
+                          </p>
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {topics.length === 0 && (
                 <div className="text-center py-12 text-slate-500">
                   No topics found for this time range.
