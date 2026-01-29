@@ -217,7 +217,7 @@ export default function Settings() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 ${limits.max_manual_runs_per_month > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
             <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-slate-400">Keywords</span>
@@ -262,6 +262,23 @@ export default function Settings() {
                 />
               </div>
             </div>
+
+            {limits.max_manual_runs_per_month > 0 && (
+              <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-400">Manual Refreshes</span>
+                  <span className="text-lg font-bold text-slate-100">
+                    {limits.current_manual_runs} / {limits.max_manual_runs_per_month}
+                  </span>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-2">
+                  <div
+                    className="bg-purple-500 h-2 rounded-full transition-all"
+                    style={{ width: `${Math.min((limits.current_manual_runs / limits.max_manual_runs_per_month) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

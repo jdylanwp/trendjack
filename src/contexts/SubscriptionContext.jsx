@@ -79,6 +79,11 @@ export function SubscriptionProvider({ children }) {
     return limits.current_ai_analyses < limits.max_ai_analyses_per_month;
   };
 
+  const canPerformManualRun = () => {
+    if (!limits) return false;
+    return limits.current_manual_runs < limits.max_manual_runs_per_month;
+  };
+
   const getUsagePercentage = (type) => {
     if (!limits) return 0;
 
@@ -89,6 +94,8 @@ export function SubscriptionProvider({ children }) {
         return (limits.current_ai_analyses / limits.max_ai_analyses_per_month) * 100;
       case 'leads':
         return (limits.current_leads / limits.max_leads_per_month) * 100;
+      case 'manual_runs':
+        return (limits.current_manual_runs / limits.max_manual_runs_per_month) * 100;
       default:
         return 0;
     }
@@ -110,6 +117,7 @@ export function SubscriptionProvider({ children }) {
     loading,
     canAddKeyword,
     canPerformAIAnalysis,
+    canPerformManualRun,
     getUsagePercentage,
     trackUsage,
     refreshLimits,
