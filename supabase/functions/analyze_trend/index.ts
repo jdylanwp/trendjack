@@ -243,7 +243,7 @@ Format your response as exactly 3 lines, one bullet point per line, no bullet sy
         "HTTP-Referer": "https://trendjack.app",
       },
       body: JSON.stringify({
-        model: "nvidia/nemotron-3-nano-30b-a3b:free",
+        model: "meta-llama/llama-4-maverick",
         messages: [
           {
             role: "user",

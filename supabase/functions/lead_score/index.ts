@@ -467,7 +467,7 @@ REMEMBER: The goal is NOT to pitch. The goal is to get them to DM YOU by demonst
       "X-Title": "TrendJack",
     },
     body: JSON.stringify({
-      model: "nvidia/nemotron-3-nano-30b-a3b:free",
+      model: "meta-llama/llama-4-maverick",
       messages: [
         {
           role: "user",
