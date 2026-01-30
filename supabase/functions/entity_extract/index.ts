@@ -43,7 +43,7 @@ Return a JSON array of objects with this exact format:
         "X-Title": "TrendJack Entity Extraction",
       },
       body: JSON.stringify({
-        model: "google/gemma-3-27b-it:free",
+        model: "nvidia/nemotron-3-nano-30b-a3b:free",
         messages: [
           {
             role: "user",
