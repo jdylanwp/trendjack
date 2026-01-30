@@ -387,9 +387,9 @@ async function scorePostWithAI(
   apiKey: string,
   offerContext: string
 ): Promise<AIResponse> {
-  const contextInstruction = offerContext
-    ? `\n\nDraft the reply as if you are the user described below. Subtly mention how your specific service solves their pain point. Be helpful first, promotional second.\n\nYour Business Context:\n${offerContext}`
-    : `\n\nDraft a helpful, non-spammy reply that addresses their specific problem.`;
+  const businessContext = offerContext
+    ? `\n\nYour Business Context (for reference when crafting workarounds):\n${offerContext}`
+    : '';
 
   const prompt = `Analyze this Reddit post for sales/marketing intent AND frustration level related to "${keyword}".
 
@@ -401,7 +401,7 @@ Return JSON ONLY in this exact format:
 {
   "intent_score": <number 0-100>,
   "pain_point": "<short summary of the user's problem>",
-  "suggested_reply": "<helpful reply that subtly pitches your service>",
+  "suggested_reply": "<The comment text to post on Reddit>",
   "fury_score": <number 0-100>,
   "pain_summary": "<brief explanation of what's causing frustration>",
   "primary_trigger": "<main frustration trigger, e.g., 'Expensive pricing tier changes'>",
@@ -428,7 +428,35 @@ Look for emotional language indicating:
 - Failed attempts to solve the problem
 - Expletives or strong negative language
 
-The fury_score should be HIGH when users are ready to switch NOW, not just browsing.${contextInstruction}`;
+The fury_score should be HIGH when users are ready to switch NOW, not just browsing.
+
+CRITICAL INSTRUCTIONS FOR "suggested_reply" (STRATEGIC INFILTRATION):
+
+1. If fury_score is HIGH (>70): Use "Permission-Based DM" Strategy
+   ❌ DO NOT mention product names, links, or pitch anything publicly
+   ✅ Sympathize with their pain point authentically ("I dealt with this exact issue last month")
+   ✅ Mention you found a workaround or solution that worked for you
+   ✅ Keep it vague - don't explain the solution publicly
+   ✅ End with a permission-based hook: "Mind if I DM you the steps?" or "Happy to share the workaround if you DM me"
+
+   Example: "Ugh, I feel this. I was stuck in the same pricing trap with [their problem]. Found a workaround that cut my costs by 60% but it's not something I can post publicly. Mind if I DM you the approach?"
+
+2. If fury_score is LOW (<70) but intent_score is HIGH (>80): Use "Helpful Expert" Strategy (90:10 Rule)
+   ❌ DO NOT pitch products or services
+   ✅ Give genuinely helpful, actionable advice that addresses their specific question
+   ✅ Demonstrate expertise and credibility
+   ✅ Build trust so they check your profile or ask follow-up questions
+   ✅ Be a helpful community member FIRST
+
+   Example: "Here's what worked for me: [specific actionable tip]. The key is [insight]. Also make sure you [additional tip]. Hope that helps!"
+
+3. If both scores are LOW (<70): Use "Minimal Engagement" Strategy
+   ✅ Short, empathetic comment that adds value
+   ✅ OR skip the reply entirely (write "SKIP - Low priority lead")
+
+   Example: "Good question, curious to see what others suggest." or "SKIP - Low priority lead"
+
+REMEMBER: The goal is NOT to pitch. The goal is to get them to DM YOU by demonstrating value and creating curiosity. Angry users convert fastest when they feel like they discovered YOU, not the other way around.${businessContext}`;
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
