@@ -105,6 +105,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // CRITICAL FIX #1: Increment usage IMMEDIATELY after limit check
+    // This prevents timeouts from allowing free manual runs
+    await fetch(`${supabaseUrl}/rest/v1/rpc/increment_usage`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "APIKey": supabaseServiceKey,
+      },
+      body: JSON.stringify({ p_usage_type: "manual_run", p_user_id: userId }),
+    });
+
     const trendPromises = keywords.map((kw: any) =>
       fetch(`${supabaseUrl}/functions/v1/trend_fetch`, {
         method: "POST",
@@ -131,14 +143,15 @@ Deno.serve(async (req: Request) => {
 
     await Promise.allSettled(redditPromises);
 
-    await fetch(`${supabaseUrl}/rest/v1/rpc/increment_usage`, {
+    // CRITICAL FIX #2: Call trend_score to analyze the newly fetched data
+    // Without this, the dashboard never updates after manual refresh
+    await fetch(`${supabaseUrl}/functions/v1/trend_score`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${supabaseServiceKey}`,
         "Content-Type": "application/json",
-        "APIKey": supabaseServiceKey,
       },
-      body: JSON.stringify({ p_usage_type: "manual_run", p_user_id: userId }),
+      body: JSON.stringify({ batch_size: 20 }),
     });
 
     return new Response(
