@@ -1,25 +1,46 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Eye, EyeOff, Flame, TrendingDown, Activity, Zap, Filter, Star } from 'lucide-react';
+import { TrendingUp, Flame, TrendingDown, Activity, Zap, Filter, Star, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Skeleton } from '../components/Skeleton';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import UpgradePrompt from '../components/UpgradePrompt';
+import EntityCard from '../components/EntityCard';
+import EntityDetailsModal from '../components/EntityDetailsModal';
+import { TIME_RANGES, filterDataByTimeRange, aggregateMentionsByDate } from '../utils/trendCalculations';
 
 export default function FutureTopics() {
   const { user } = useAuth();
   const { subscription } = useSubscription();
   const [entities, setEntities] = useState([]);
+  const [watchedEntities, setWatchedEntities] = useState([]);
   const [trackedEntityIds, setTrackedEntityIds] = useState(new Set());
+  const [entityCharts, setEntityCharts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [chartsLoading, setChartsLoading] = useState(true);
   const [trendFilter, setTrendFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [timeRange, setTimeRange] = useState('30d');
   const [categories, setCategories] = useState([]);
+  const [selectedEntity, setSelectedEntity] = useState(null);
+  const [showWatchedOnly, setShowWatchedOnly] = useState(false);
 
   useEffect(() => {
     fetchGlobalTrends();
     fetchTrackedEntities();
   }, [trendFilter, categoryFilter]);
+
+  useEffect(() => {
+    if (entities.length > 0) {
+      fetchEntityCharts(entities.map(e => e.id));
+    }
+  }, [entities, timeRange]);
+
+  useEffect(() => {
+    if (trackedEntityIds.size > 0) {
+      fetchWatchedEntities();
+    }
+  }, [trackedEntityIds]);
 
   const fetchGlobalTrends = async () => {
     setLoading(true);
@@ -77,6 +98,63 @@ export default function FutureTopics() {
     }
   };
 
+  const fetchWatchedEntities = async () => {
+    if (!user || trackedEntityIds.size === 0) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('global_entities')
+        .select('*')
+        .in('id', Array.from(trackedEntityIds))
+        .order('volume_24h', { ascending: false });
+
+      if (error) throw error;
+
+      setWatchedEntities(data || []);
+    } catch (err) {
+      console.error('Failed to fetch watched entities:', err);
+    }
+  };
+
+  const fetchEntityCharts = async (entityIds) => {
+    setChartsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('entity_mentions')
+        .select('global_entity_id, mention_date, mention_count')
+        .in('global_entity_id', entityIds)
+        .order('mention_date', { ascending: true });
+
+      if (error) throw error;
+
+      const chartsByEntity = {};
+      (data || []).forEach(mention => {
+        if (!chartsByEntity[mention.global_entity_id]) {
+          chartsByEntity[mention.global_entity_id] = [];
+        }
+        chartsByEntity[mention.global_entity_id].push({
+          date: mention.mention_date,
+          count: mention.mention_count,
+        });
+      });
+
+      Object.keys(chartsByEntity).forEach(entityId => {
+        chartsByEntity[entityId] = aggregateMentionsByDate(
+          chartsByEntity[entityId].map(d => ({
+            mention_date: d.date,
+            mention_count: d.count,
+          }))
+        );
+      });
+
+      setEntityCharts(chartsByEntity);
+    } catch (err) {
+      console.error('Failed to fetch entity charts:', err);
+    } finally {
+      setChartsLoading(false);
+    }
+  };
+
   const toggleTracking = async (entityId, isTracked) => {
     if (!user) return;
 
@@ -113,35 +191,6 @@ export default function FutureTopics() {
     }
   };
 
-  const getTrendIcon = (status) => {
-    switch (status) {
-      case 'Exploding':
-        return <Flame className="text-orange-400" size={18} />;
-      case 'Slow Burn':
-        return <TrendingUp className="text-emerald-400" size={18} />;
-      case 'Declining':
-        return <TrendingDown className="text-red-400" size={18} />;
-      case 'Peaked':
-        return <Activity className="text-amber-400" size={18} />;
-      default:
-        return <Zap className="text-blue-400" size={18} />;
-    }
-  };
-
-  const getTrendColor = (status) => {
-    switch (status) {
-      case 'Exploding':
-        return 'border-orange-500/50 bg-orange-900/10';
-      case 'Slow Burn':
-        return 'border-emerald-500/50 bg-emerald-900/10';
-      case 'Declining':
-        return 'border-red-500/50 bg-red-900/10';
-      case 'Peaked':
-        return 'border-amber-500/50 bg-amber-900/10';
-      default:
-        return 'border-blue-500/50 bg-blue-900/10';
-    }
-  };
 
   if (loading) {
     return (
@@ -190,8 +239,8 @@ export default function FutureTopics() {
         />
       )}
 
-      <div className="terminal-card">
-        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+      <div className="terminal-card space-y-4">
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <Filter className="text-slate-400" size={18} />
             <button
@@ -239,7 +288,7 @@ export default function FutureTopics() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
@@ -252,79 +301,92 @@ export default function FutureTopics() {
             </select>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {entities.map((entity) => {
-          const isTracked = trackedEntityIds.has(entity.id);
-
-          return (
-            <div
-              key={entity.id}
-              className={`terminal-card border transition-all hover:scale-105 ${getTrendColor(entity.trend_status)}`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2 flex-1">
-                  {getTrendIcon(entity.trend_status)}
-                  <h3 className="font-semibold text-slate-100 text-lg">{entity.entity_name}</h3>
-                </div>
-                {isTracked && (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-emerald-900/50 border border-emerald-500 rounded text-xs font-medium text-emerald-400">
-                    <Star size={12} className="fill-emerald-400" />
-                    Watching
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Category</span>
-                  <span className="text-slate-200 font-medium">{entity.category}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Status</span>
-                  <span className="text-slate-200 font-medium">{entity.trend_status}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">24h Volume</span>
-                  <span className="text-emerald-400 font-bold">{entity.volume_24h}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Growth Slope</span>
-                  <span className={`font-bold ${entity.growth_slope > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {entity.growth_slope > 0 ? '+' : ''}{entity.growth_slope?.toFixed(3) || '0.000'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Z-Score</span>
-                  <span className="text-slate-200 font-medium">{entity.z_score?.toFixed(2) || '0.00'}</span>
-                </div>
-              </div>
-
+        <div className="flex items-center gap-2 pt-2 border-t border-slate-700">
+          <Clock className="text-slate-400" size={16} />
+          <span className="text-slate-400 text-sm">Time Range:</span>
+          <div className="flex gap-1 flex-wrap">
+            {Object.entries(TIME_RANGES).map(([key, { label }]) => (
               <button
-                onClick={() => toggleTracking(entity.id, isTracked)}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded font-medium text-sm transition-colors ${
-                  isTracked
-                    ? 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                key={key}
+                onClick={() => setTimeRange(key)}
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  timeRange === key
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
               >
-                {isTracked ? (
-                  <>
-                    <EyeOff size={16} />
-                    Untrack
-                  </>
-                ) : (
-                  <>
-                    <Eye size={16} />
-                    Track This
-                  </>
-                )}
+                {label}
               </button>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        </div>
+
+        {user && trackedEntityIds.size > 0 && (
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-700">
+            <Star className="text-emerald-400" size={16} />
+            <button
+              onClick={() => setShowWatchedOnly(!showWatchedOnly)}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                showWatchedOnly
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              {showWatchedOnly ? 'Show All' : 'Show Watched Only'}
+            </button>
+            <span className="text-slate-400 text-sm">
+              ({trackedEntityIds.size} watching)
+            </span>
+          </div>
+        )}
       </div>
+
+      {showWatchedOnly && watchedEntities.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Star className="text-emerald-400 fill-emerald-400" size={24} />
+            <h2 className="text-xl font-bold text-slate-100">Your Watched Topics</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {watchedEntities.map((entity) => {
+              const chartData = filterDataByTimeRange(entityCharts[entity.id] || [], timeRange);
+              return (
+                <EntityCard
+                  key={entity.id}
+                  entity={entity}
+                  chartData={chartData}
+                  isTracked={true}
+                  onToggleTracking={toggleTracking}
+                  onViewDetails={setSelectedEntity}
+                  timeRange={timeRange}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!showWatchedOnly && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {entities.map((entity) => {
+            const isTracked = trackedEntityIds.has(entity.id);
+            const chartData = filterDataByTimeRange(entityCharts[entity.id] || [], timeRange);
+
+            return (
+              <EntityCard
+                key={entity.id}
+                entity={entity}
+                chartData={chartData}
+                isTracked={isTracked}
+                onToggleTracking={toggleTracking}
+                onViewDetails={setSelectedEntity}
+                timeRange={timeRange}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {entities.length === 0 && (
         <div className="terminal-card text-center py-12">
@@ -344,7 +406,7 @@ export default function FutureTopics() {
             <p className="text-slate-300 text-sm leading-relaxed mb-3">
               Every user search contributes to the global trend database. As more people monitor keywords,
               we discover and rank emerging entities using AI-powered named entity recognition. Track any
-              trend to add it to your personal monitoring list.
+              trend to add it to your personal monitoring list and view detailed historical charts.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
               <div className="bg-slate-800/50 p-3 rounded-lg">
@@ -379,6 +441,14 @@ export default function FutureTopics() {
           </div>
         </div>
       </div>
+
+      {selectedEntity && (
+        <EntityDetailsModal
+          entity={selectedEntity}
+          chartData={entityCharts[selectedEntity.id] || []}
+          onClose={() => setSelectedEntity(null)}
+        />
+      )}
     </div>
   );
 }
