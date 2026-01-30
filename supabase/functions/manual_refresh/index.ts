@@ -24,7 +24,7 @@ Deno.serve(async (req: Request) => {
     const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "APIKey": supabaseServiceKey,
+        "apikey": supabaseServiceKey,
       },
     });
 
