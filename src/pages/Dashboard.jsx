@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { TrendingUp, Activity, Flame, BarChart3, RefreshCw, Zap } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, Cell } from 'recharts';
+import { TrendingUp, Activity, Flame, BarChart3, RefreshCw, Zap, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CronTimer from '../components/CronTimer';
 import EmptyState from '../components/EmptyState';
@@ -12,6 +12,7 @@ export default function Dashboard() {
   const { limits, canPerformManualRun, trackUsage, subscription, refreshLimits } = useSubscription();
   const [trendData, setTrendData] = useState([]);
   const [trendingKeywords, setTrendingKeywords] = useState([]);
+  const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState(null);
@@ -29,19 +30,30 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const { data: scores, error: scoresError } = await supabase
-        .from('trend_scores')
-        .select(`
-          *,
-          monitored_keywords (
-            keyword,
-            related_subreddit
-          )
-        `)
-        .order('calculated_at', { ascending: false })
-        .limit(100);
+      const [scoresResult, leadsResult] = await Promise.all([
+        supabase
+          .from('trend_scores')
+          .select(`
+            *,
+            monitored_keywords (
+              keyword,
+              related_subreddit
+            )
+          `)
+          .order('calculated_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('leads')
+          .select('id, intent_score, fury_score, pain_point, monitored_keywords(keyword)')
+          .order('created_at', { ascending: false })
+          .limit(50)
+      ]);
+
+      const { data: scores, error: scoresError } = scoresResult;
+      const { data: leadsData, error: leadsError } = leadsResult;
 
       if (scoresError) throw scoresError;
+      if (leadsData) setLeads(leadsData);
 
       if (scores && scores.length > 0) {
         const chartData = processChartData(scores);
@@ -360,6 +372,118 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {leads.length > 0 && (
+        <div className="terminal-card">
+          <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+            <Target className="text-red-400" size={20} />
+            Lead Quadrant Analysis
+          </h2>
+          <p className="text-slate-400 text-sm mb-6">
+            Leads plotted by Intent Score (buying readiness) vs Fury Score (frustration level). Red Zone = high intent + high fury.
+          </p>
+
+          <ResponsiveContainer width="100%" height={500}>
+            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis
+                type="number"
+                dataKey="intent_score"
+                name="Intent Score"
+                domain={[70, 100]}
+                stroke="#64748b"
+                label={{ value: 'Intent Score (Buying Readiness)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }}
+              />
+              <YAxis
+                type="number"
+                dataKey="fury_score"
+                name="Fury Score"
+                domain={[0, 100]}
+                stroke="#64748b"
+                label={{ value: 'Fury Score (Frustration)', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+              />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                }}
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-lg">
+                        <p className="text-slate-300 font-semibold mb-2">{data.monitored_keywords?.keyword}</p>
+                        <p className="text-emerald-400 text-sm">Intent: {data.intent_score}</p>
+                        <p className="text-orange-400 text-sm">Fury: {data.fury_score || 0}</p>
+                        <p className="text-slate-400 text-xs mt-2 max-w-xs">{data.pain_point}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Scatter data={leads} shape="circle">
+                {leads.map((lead, index) => {
+                  let color = '#64748b';
+                  if (lead.intent_score >= 85 && (lead.fury_score || 0) >= 75) {
+                    color = '#ef4444';
+                  } else if (lead.intent_score >= 85) {
+                    color = '#10b981';
+                  } else if ((lead.fury_score || 0) >= 75) {
+                    color = '#f97316';
+                  }
+                  return <Cell key={`cell-${index}`} fill={color} />;
+                })}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+            <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <span className="text-sm font-semibold text-red-400">RED ZONE</span>
+              </div>
+              <p className="text-xs text-slate-400">High Intent + High Fury</p>
+              <p className="text-2xl font-bold text-red-400 mt-2">
+                {leads.filter(l => l.intent_score >= 85 && (l.fury_score || 0) >= 75).length}
+              </p>
+            </div>
+            <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                <span className="text-sm font-semibold text-emerald-400">HIGH INTENT</span>
+              </div>
+              <p className="text-xs text-slate-400">High Intent + Low Fury</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-2">
+                {leads.filter(l => l.intent_score >= 85 && (l.fury_score || 0) < 75).length}
+              </p>
+            </div>
+            <div className="bg-orange-900/20 border border-orange-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                <span className="text-sm font-semibold text-orange-400">HIGH FURY</span>
+              </div>
+              <p className="text-xs text-slate-400">Low Intent + High Fury</p>
+              <p className="text-2xl font-bold text-orange-400 mt-2">
+                {leads.filter(l => l.intent_score < 85 && (l.fury_score || 0) >= 75).length}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 border border-slate-600 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 rounded-full bg-slate-500"></div>
+                <span className="text-sm font-semibold text-slate-400">STANDARD</span>
+              </div>
+              <p className="text-xs text-slate-400">Low Intent + Low Fury</p>
+              <p className="text-2xl font-bold text-slate-400 mt-2">
+                {leads.filter(l => l.intent_score < 85 && (l.fury_score || 0) < 75).length}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

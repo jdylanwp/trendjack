@@ -30,6 +30,10 @@ interface AIResponse {
   intent_score: number;
   pain_point: string;
   suggested_reply: string;
+  fury_score: number;
+  pain_summary: string;
+  primary_trigger: string;
+  sample_quote: string;
 }
 
 interface ExecutionLog {
@@ -290,6 +294,10 @@ Deno.serve(async (req: Request) => {
                       intent_score: aiResponse.intent_score,
                       pain_point: aiResponse.pain_point,
                       suggested_reply: aiResponse.suggested_reply,
+                      fury_score: aiResponse.fury_score || 0,
+                      pain_summary: aiResponse.pain_summary || '',
+                      primary_trigger: aiResponse.primary_trigger || '',
+                      sample_quote: aiResponse.sample_quote || '',
                       ai_analysis: aiResponse,
                       status: "new",
                     });
@@ -383,7 +391,7 @@ async function scorePostWithAI(
     ? `\n\nDraft the reply as if you are the user described below. Subtly mention how your specific service solves their pain point. Be helpful first, promotional second.\n\nYour Business Context:\n${offerContext}`
     : `\n\nDraft a helpful, non-spammy reply that addresses their specific problem.`;
 
-  const prompt = `Analyze this Reddit post for sales/marketing intent related to "${keyword}".
+  const prompt = `Analyze this Reddit post for sales/marketing intent AND frustration level related to "${keyword}".
 
 Post Title: ${post.title}
 Post Body: ${post.body}
@@ -393,15 +401,34 @@ Return JSON ONLY in this exact format:
 {
   "intent_score": <number 0-100>,
   "pain_point": "<short summary of the user's problem>",
-  "suggested_reply": "<helpful reply that subtly pitches your service>"
+  "suggested_reply": "<helpful reply that subtly pitches your service>",
+  "fury_score": <number 0-100>,
+  "pain_summary": "<brief explanation of what's causing frustration>",
+  "primary_trigger": "<main frustration trigger, e.g., 'Expensive pricing tier changes'>",
+  "sample_quote": "<direct quote from the post showing frustration>"
 }
 
-Score 0-100 based on:
+INTENT SCORE (0-100) based on:
 - How clearly they express a problem or need
 - How likely they are to be receptive to a solution
 - How relevant their problem is to ${keyword}
+Be strict - only score above 75 if there's clear buying intent or a specific problem to solve.
 
-Be strict - only score above 75 if there's clear buying intent or a specific problem to solve.${contextInstruction}`;
+FURY SCORE (0-100) - The Pain-to-Solution Ratio:
+- 0-30: Mild curiosity, no real frustration
+- 30-60: Noticeable dissatisfaction, some pain points
+- 60-80: High frustration, clear complaints about current solution
+- 80-100: Extreme anger, urgency, desperation. Uses words like "hate", "stuck", "broken", "expensive", "terrible", "nightmare", "frustrated"
+
+Look for emotional language indicating:
+- Anger at current tools/services
+- Desperation for alternatives
+- Financial pain (too expensive, waste of money)
+- Time/productivity loss
+- Failed attempts to solve the problem
+- Expletives or strong negative language
+
+The fury_score should be HIGH when users are ready to switch NOW, not just browsing.${contextInstruction}`;
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",

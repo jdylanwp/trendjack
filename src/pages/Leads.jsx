@@ -91,6 +91,26 @@ export default function Leads() {
     return 'text-slate-400';
   };
 
+  const getFuryScoreColor = (score) => {
+    if (score >= 80) return 'text-red-400';
+    if (score >= 60) return 'text-orange-400';
+    if (score >= 30) return 'text-yellow-400';
+    return 'text-slate-400';
+  };
+
+  const getQuadrantLabel = (intentScore, furyScore) => {
+    if (intentScore >= 85 && furyScore >= 75) {
+      return { label: 'RED ZONE', color: 'bg-red-600', textColor: 'text-white' };
+    }
+    if (intentScore >= 85 && furyScore < 75) {
+      return { label: 'High Intent', color: 'bg-emerald-600', textColor: 'text-white' };
+    }
+    if (intentScore < 85 && furyScore >= 75) {
+      return { label: 'High Fury', color: 'bg-orange-600', textColor: 'text-white' };
+    }
+    return { label: 'Standard', color: 'bg-slate-600', textColor: 'text-slate-300' };
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -144,22 +164,30 @@ export default function Leads() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="terminal-card">
           <p className="text-sm text-slate-400">Total Leads</p>
           <p className="text-3xl font-bold text-slate-100">{leads.length}</p>
         </div>
-        <div className="terminal-card">
-          <p className="text-sm text-slate-400">New</p>
-          <p className="text-3xl font-bold text-emerald-400">
-            {leads.filter(l => l.status === 'new').length}
+        <div className="terminal-card bg-red-900/10 border-red-500/30">
+          <p className="text-sm text-slate-400">Red Zone 🔥</p>
+          <p className="text-3xl font-bold text-red-400">
+            {leads.filter(l => l.intent_score >= 85 && (l.fury_score || 0) >= 75).length}
           </p>
         </div>
         <div className="terminal-card">
-          <p className="text-sm text-slate-400">Avg Intent Score</p>
-          <p className="text-3xl font-bold text-slate-100">
+          <p className="text-sm text-slate-400">Avg Intent</p>
+          <p className="text-3xl font-bold text-emerald-400">
             {leads.length > 0
               ? (leads.reduce((sum, l) => sum + l.intent_score, 0) / leads.length).toFixed(0)
+              : 0}
+          </p>
+        </div>
+        <div className="terminal-card">
+          <p className="text-sm text-slate-400">Avg Fury</p>
+          <p className="text-3xl font-bold text-orange-400">
+            {leads.length > 0
+              ? (leads.reduce((sum, l) => sum + (l.fury_score || 0), 0) / leads.length).toFixed(0)
               : 0}
           </p>
         </div>
@@ -178,6 +206,14 @@ export default function Leads() {
                     <span className={`status-badge status-${lead.status}`}>
                       {lead.status}
                     </span>
+                    {(() => {
+                      const quadrant = getQuadrantLabel(lead.intent_score, lead.fury_score || 0);
+                      return (
+                        <span className={`px-2 py-1 ${quadrant.color} ${quadrant.textColor} text-xs font-bold rounded`}>
+                          {quadrant.label}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-slate-400 mb-3">
                     <span className="text-emerald-400 font-semibold">
@@ -192,9 +228,18 @@ export default function Leads() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className={`text-2xl font-bold ${getIntentScoreColor(lead.intent_score)}`}>
-                    {lead.intent_score}
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <div className="text-xs text-slate-400 mb-1">Intent</div>
+                    <div className={`text-2xl font-bold ${getIntentScoreColor(lead.intent_score)}`}>
+                      {lead.intent_score}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-slate-400 mb-1">Fury</div>
+                    <div className={`text-2xl font-bold ${getFuryScoreColor(lead.fury_score || 0)}`}>
+                      {lead.fury_score || 0}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -205,6 +250,38 @@ export default function Leads() {
                   {lead.pain_point}
                 </p>
               </div>
+
+              {(lead.fury_score > 0 || lead.pain_summary) && (
+                <div className="mb-4 bg-gradient-to-r from-red-900/10 to-orange-900/10 border border-red-500/30 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+                    <span className="text-lg">🔥</span>
+                    Fury Analysis (Score: {lead.fury_score || 0}/100)
+                  </h4>
+
+                  {lead.pain_summary && (
+                    <div className="mb-3">
+                      <span className="text-xs text-slate-400 font-semibold">WHY THEY'RE FRUSTRATED:</span>
+                      <p className="text-slate-300 text-sm mt-1">{lead.pain_summary}</p>
+                    </div>
+                  )}
+
+                  {lead.primary_trigger && (
+                    <div className="mb-3">
+                      <span className="text-xs text-slate-400 font-semibold">PRIMARY TRIGGER:</span>
+                      <p className="text-orange-400 text-sm mt-1 font-medium">{lead.primary_trigger}</p>
+                    </div>
+                  )}
+
+                  {lead.sample_quote && (
+                    <div>
+                      <span className="text-xs text-slate-400 font-semibold">SAMPLE QUOTE:</span>
+                      <p className="text-slate-300 text-sm mt-1 italic border-l-2 border-red-500 pl-3">
+                        "{lead.sample_quote}"
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mb-4">
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">Suggested Reply</h4>
