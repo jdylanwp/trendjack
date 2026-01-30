@@ -47,15 +47,28 @@ export default function Dashboard() {
         const chartData = processChartData(scores);
         setTrendData(chartData);
 
-        const trending = scores
+        // Deduplicate trending keywords by keyword name (in case both system and user have same keyword)
+        const trendingMap = new Map();
+        scores
           .filter(s => s.is_trending)
-          .map(s => ({
-            id: s.id,
-            keyword: s.monitored_keywords?.keyword || 'Unknown',
-            subreddit: s.monitored_keywords?.related_subreddit || 'Unknown',
-            heatScore: parseFloat(s.heat_score).toFixed(2),
-            calculatedAt: new Date(s.calculated_at).toLocaleString(),
-          }))
+          .forEach(s => {
+            const keyword = s.monitored_keywords?.keyword || 'Unknown';
+            const heatScore = parseFloat(s.heat_score);
+
+            // Keep the entry with highest heat score for each unique keyword name
+            if (!trendingMap.has(keyword) || trendingMap.get(keyword).heatScore < heatScore) {
+              trendingMap.set(keyword, {
+                id: s.id,
+                keyword,
+                subreddit: s.monitored_keywords?.related_subreddit || 'Unknown',
+                heatScore: heatScore.toFixed(2),
+                calculatedAt: new Date(s.calculated_at).toLocaleString(),
+              });
+            }
+          });
+
+        const trending = Array.from(trendingMap.values())
+          .sort((a, b) => parseFloat(b.heatScore) - parseFloat(a.heatScore))
           .slice(0, 10);
 
         setTrendingKeywords(trending);
@@ -64,9 +77,12 @@ export default function Dashboard() {
           .filter(s => s.is_trending)
           .reduce((sum, s) => sum + parseFloat(s.heat_score), 0) / (scores.filter(s => s.is_trending).length || 1);
 
+        // Deduplicate keywords by name for accurate counts
+        const uniqueKeywords = new Set(scores.map(s => s.monitored_keywords?.keyword).filter(Boolean));
+
         setStats({
-          totalKeywords: new Set(scores.map(s => s.keyword_id)).size,
-          trendingCount: scores.filter(s => s.is_trending).length,
+          totalKeywords: uniqueKeywords.size,
+          trendingCount: trendingMap.size,
           avgHeatScore: avgHeat.toFixed(2),
         });
       }
@@ -88,7 +104,12 @@ export default function Dashboard() {
         dataByKeyword[date] = { date };
       }
 
-      dataByKeyword[date][keyword] = parseFloat(score.heat_score);
+      // If keyword already exists for this date, take the max heat score
+      // This handles duplicate keywords (system + user keywords with same name)
+      const currentScore = parseFloat(score.heat_score);
+      if (!dataByKeyword[date][keyword] || dataByKeyword[date][keyword] < currentScore) {
+        dataByKeyword[date][keyword] = currentScore;
+      }
     });
 
     return Object.values(dataByKeyword).slice(0, 20).reverse();
