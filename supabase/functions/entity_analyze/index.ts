@@ -105,7 +105,7 @@ async function analyzeEntity(supabase: any, entityId: string, entityName: string
   const regressionData: { x: number; y: number }[] = [];
   const historicalVolumes: number[] = [];
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i <= 30; i++) {
     const checkDate = new Date(thirtyDaysAgo);
     checkDate.setDate(thirtyDaysAgo.getDate() + i);
     const dateStr = checkDate.toISOString().split("T")[0];
@@ -113,10 +113,10 @@ async function analyzeEntity(supabase: any, entityId: string, entityName: string
 
     volume30d += count;
 
-    if (i >= 23) volume7d += count;
-    if (i >= 29) volume24h += count;
+    if (i >= 24) volume7d += count;
+    if (i >= 30) volume24h += count;
 
-    if (i < 29) historicalVolumes.push(count);
+    if (i < 30) historicalVolumes.push(count);
 
     regressionData.push({ x: i, y: count });
   }

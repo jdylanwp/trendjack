@@ -97,32 +97,25 @@ async function upsertGlobalEntity(
   }
 
   if (existing) {
-    const { error: updateError } = await supabase
-      .from("global_entities")
-      .update({
-        volume_24h: existing.volume_24h + 1,
-        total_mentions: existing.total_mentions + 1,
-        last_analyzed_at: new Date().toISOString(),
-        category: category,
-      })
-      .eq("id", existing.id);
+    const { error: counterError } = await supabase.rpc("increment_entity_counters", {
+      p_entity_id: existing.id,
+      p_category: category,
+    });
 
-    if (updateError) {
-      console.error("Update error:", updateError);
+    if (counterError) {
+      console.error("Counter increment error:", counterError);
       return null;
     }
 
-    await supabase
-      .from("entity_mentions")
-      .upsert({
-        global_entity_id: existing.id,
-        mention_date: today,
-        source: source,
-        mention_count: 1,
-      }, {
-        onConflict: "global_entity_id,mention_date,source",
-        ignoreDuplicates: false,
-      });
+    const { error: mentionError } = await supabase.rpc("increment_entity_mention", {
+      p_entity_id: existing.id,
+      p_date: today,
+      p_source: source,
+    });
+
+    if (mentionError) {
+      console.error("Mention increment error:", mentionError);
+    }
 
     return existing.id;
   } else {
