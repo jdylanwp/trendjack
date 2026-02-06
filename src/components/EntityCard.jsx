@@ -1,6 +1,36 @@
-import { Eye, EyeOff, Flame, TrendingUp, TrendingDown, Activity, Zap, Star, BarChart3 } from 'lucide-react';
+import { Eye, EyeOff, Flame, TrendingUp, TrendingDown, Activity, Zap, Star, BarChart3, ArrowUp } from 'lucide-react';
 import { TrendSparkline } from './TrendChart';
 import { calculateGrowthPercentage } from '../utils/trendCalculations';
+import { getPredictionLabel } from '../utils/predictiveMath';
+
+const TREND_ICONS = {
+  Exploding: { icon: Flame, color: 'text-orange-400' },
+  'Slow Burn': { icon: TrendingUp, color: 'text-emerald-400' },
+  Declining: { icon: TrendingDown, color: 'text-red-400' },
+  Peaked: { icon: Activity, color: 'text-amber-400' },
+};
+
+const TREND_COLORS = {
+  Exploding: 'border-orange-500/50 bg-orange-900/10 hover:border-orange-500',
+  'Slow Burn': 'border-emerald-500/50 bg-emerald-900/10 hover:border-emerald-500',
+  Declining: 'border-red-500/50 bg-red-900/10 hover:border-red-500',
+  Peaked: 'border-amber-500/50 bg-amber-900/10 hover:border-amber-500',
+};
+
+function getGrowthColor(growth) {
+  if (growth > 50) return 'text-emerald-400';
+  if (growth > 0) return 'text-emerald-300';
+  if (growth < -50) return 'text-red-400';
+  if (growth < 0) return 'text-red-300';
+  return 'text-slate-400';
+}
+
+function getGForceColor(gForce) {
+  if (gForce >= 10) return 'text-orange-400';
+  if (gForce >= 5) return 'text-amber-400';
+  if (gForce > 0) return 'text-emerald-400';
+  return 'text-slate-400';
+}
 
 export default function EntityCard({
   entity,
@@ -8,62 +38,36 @@ export default function EntityCard({
   isTracked,
   onToggleTracking,
   onViewDetails,
-  timeRange
+  timeRange,
+  dynamics,
+  showPrediction,
 }) {
-  const getTrendIcon = (status) => {
-    switch (status) {
-      case 'Exploding':
-        return <Flame className="text-orange-400" size={18} />;
-      case 'Slow Burn':
-        return <TrendingUp className="text-emerald-400" size={18} />;
-      case 'Declining':
-        return <TrendingDown className="text-red-400" size={18} />;
-      case 'Peaked':
-        return <Activity className="text-amber-400" size={18} />;
-      default:
-        return <Zap className="text-blue-400" size={18} />;
-    }
-  };
-
-  const getTrendColor = (status) => {
-    switch (status) {
-      case 'Exploding':
-        return 'border-orange-500/50 bg-orange-900/10 hover:border-orange-500';
-      case 'Slow Burn':
-        return 'border-emerald-500/50 bg-emerald-900/10 hover:border-emerald-500';
-      case 'Declining':
-        return 'border-red-500/50 bg-red-900/10 hover:border-red-500';
-      case 'Peaked':
-        return 'border-amber-500/50 bg-amber-900/10 hover:border-amber-500';
-      default:
-        return 'border-blue-500/50 bg-blue-900/10 hover:border-blue-500';
-    }
-  };
-
+  const trendConfig = TREND_ICONS[entity.trend_status] || { icon: Zap, color: 'text-blue-400' };
+  const TrendIcon = trendConfig.icon;
+  const trendColor = TREND_COLORS[entity.trend_status] || 'border-blue-500/50 bg-blue-900/10 hover:border-blue-500';
   const growthPercentage = calculateGrowthPercentage(chartData, timeRange);
-
-  const getGrowthColor = (growth) => {
-    if (growth > 50) return 'text-emerald-400';
-    if (growth > 0) return 'text-emerald-300';
-    if (growth < -50) return 'text-red-400';
-    if (growth < 0) return 'text-red-300';
-    return 'text-slate-400';
-  };
+  const predictionLabel = showPrediction && dynamics ? getPredictionLabel(dynamics.gForce) : null;
 
   return (
     <div
-      className={`terminal-card border transition-all hover:shadow-lg ${getTrendColor(entity.trend_status)} group cursor-pointer`}
+      className={`terminal-card border transition-all hover:shadow-lg ${trendColor} group cursor-pointer relative`}
       onClick={() => onViewDetails(entity)}
     >
+      {predictionLabel && (
+        <div className={`absolute -top-2.5 -right-2.5 z-10 px-2 py-0.5 rounded-full text-[10px] font-bold border ${predictionLabel.bg} ${predictionLabel.color} animate-pulse`}>
+          {predictionLabel.label}
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2 flex-1">
-          {getTrendIcon(entity.trend_status)}
-          <h3 className="font-semibold text-slate-100 text-lg group-hover:text-emerald-400 transition-colors">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <TrendIcon className={trendConfig.color} size={18} />
+          <h3 className="font-semibold text-slate-100 text-lg group-hover:text-emerald-400 transition-colors truncate">
             {entity.entity_name}
           </h3>
         </div>
         {isTracked && (
-          <div className="flex items-center gap-1 px-2 py-1 bg-emerald-900/50 border border-emerald-500 rounded text-xs font-medium text-emerald-400">
+          <div className="flex items-center gap-1 px-2 py-1 bg-emerald-900/50 border border-emerald-500 rounded text-xs font-medium text-emerald-400 flex-shrink-0">
             <Star size={12} className="fill-emerald-400" />
             Watching
           </div>
@@ -83,16 +87,44 @@ export default function EntityCard({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+      <div className={`grid ${showPrediction && dynamics ? 'grid-cols-4' : 'grid-cols-2'} gap-2 text-xs mb-3`}>
         <div>
-          <div className="text-slate-500">24h Volume</div>
+          <div className="text-slate-500">24h Vol</div>
           <div className="text-emerald-400 font-bold">{entity.volume_24h}</div>
         </div>
         <div>
-          <div className="text-slate-500">Total Mentions</div>
+          <div className="text-slate-500">Mentions</div>
           <div className="text-slate-200 font-bold">{entity.total_mentions}</div>
         </div>
+        {showPrediction && dynamics && (
+          <>
+            <div>
+              <div className="text-slate-500">Velocity</div>
+              <div className={`font-bold ${dynamics.velocity > 0 ? 'text-emerald-400' : dynamics.velocity < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                {dynamics.velocity > 0 ? '+' : ''}{dynamics.velocity}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500">G-Force</div>
+              <div className={`font-bold ${getGForceColor(dynamics.gForce)}`}>
+                {dynamics.gForce}
+              </div>
+            </div>
+          </>
+        )}
       </div>
+
+      {showPrediction && dynamics && dynamics.acceleration !== 0 && (
+        <div className={`flex items-center gap-1.5 text-xs mb-3 px-2 py-1 rounded ${
+          dynamics.acceleration > 0
+            ? 'bg-emerald-900/30 text-emerald-400'
+            : 'bg-red-900/30 text-red-400'
+        }`}>
+          <ArrowUp size={12} className={dynamics.acceleration < 0 ? 'rotate-180' : ''} />
+          {dynamics.acceleration > 0 ? 'Accelerating' : 'Decelerating'}
+          <span className="text-slate-500 ml-auto">{dynamics.confidence}% confidence</span>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
@@ -106,17 +138,7 @@ export default function EntityCard({
               : 'bg-emerald-600 hover:bg-emerald-700 text-white'
           }`}
         >
-          {isTracked ? (
-            <>
-              <EyeOff size={14} />
-              Untrack
-            </>
-          ) : (
-            <>
-              <Eye size={14} />
-              Track
-            </>
-          )}
+          {isTracked ? <><EyeOff size={14} /> Untrack</> : <><Eye size={14} /> Track</>}
         </button>
         <button
           onClick={(e) => {

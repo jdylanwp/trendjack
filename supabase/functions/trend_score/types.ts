@@ -25,6 +25,7 @@ export interface TrendAnalysis {
   isTrending: boolean;
   totalBuckets: number;
   current24hBuckets: number;
+  snapScore: number;
 }
 
 export interface TrendScoreRow {

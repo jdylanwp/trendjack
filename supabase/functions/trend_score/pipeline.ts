@@ -104,6 +104,7 @@ export async function runPipeline(deps: Deps): Promise<PipelineResult> {
           current24h: analysis.current24hCount,
           totalBuckets: analysis.totalBuckets,
           current24hBuckets: analysis.current24hBuckets,
+          snapScore: analysis.snapScore,
         },
         is_trending: analysis.isTrending,
         calculated_at: now.toISOString(),

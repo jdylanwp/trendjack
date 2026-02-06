@@ -33,6 +33,39 @@ export function detectTrend(zScore: number, currentCount: number): boolean {
   return zScore > Z_SCORE_THRESHOLD && currentCount >= MIN_CURRENT_COUNT;
 }
 
+export function computeSnapScore(counts: number[]): number {
+  if (counts.length < 4) return 0;
+
+  const velocities: number[] = [];
+  for (let i = 1; i < counts.length; i++) {
+    velocities.push(counts[i] - counts[i - 1]);
+  }
+
+  const accelerations: number[] = [];
+  for (let i = 1; i < velocities.length; i++) {
+    accelerations.push(velocities[i] - velocities[i - 1]);
+  }
+
+  const jerks: number[] = [];
+  for (let i = 1; i < accelerations.length; i++) {
+    jerks.push(accelerations[i] - accelerations[i - 1]);
+  }
+
+  const currentJerk = jerks[jerks.length - 1];
+  const currentAccel = accelerations[accelerations.length - 1];
+
+  const meanAccel =
+    accelerations.reduce((a, b) => a + b, 0) / accelerations.length;
+  const variance =
+    accelerations.reduce((a, b) => a + Math.pow(b - meanAccel, 2), 0) /
+    accelerations.length;
+
+  const stabilityFactor = variance === 0 ? 1 : variance;
+  const svr = (currentJerk * Math.abs(currentAccel)) / stabilityFactor;
+
+  return parseFloat(svr.toFixed(4));
+}
+
 export function analyzeSeries(
   buckets: TrendBucket[],
   windowHours: number,
@@ -58,6 +91,7 @@ export function analyzeSeries(
   const zScore = computeZScore(current24hCount, mean, stdDev);
   const heatScore = computeHeatScore(current24hCount, mean);
   const isTrending = detectTrend(zScore, current24hCount);
+  const snapScore = computeSnapScore(allCounts);
 
   return {
     current24hCount,
@@ -68,5 +102,6 @@ export function analyzeSeries(
     isTrending,
     totalBuckets: buckets.length,
     current24hBuckets: recentBuckets.length,
+    snapScore,
   };
 }
