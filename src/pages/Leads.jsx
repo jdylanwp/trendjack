@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Filter, Target } from 'lucide-react';
+import { Filter, Target, LayoutGrid, List } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import EmptyState from '../components/EmptyState';
 import LeadCard from '../components/LeadCard';
+import KanbanBoard from '../components/kanban/KanbanBoard';
 import { StatCardSkeleton, LeadCardSkeleton } from '../components/Skeleton';
 
 export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [viewMode, setViewMode] = useState('kanban');
 
   const fetchLeads = useCallback(async () => {
     try {
-      let query = supabase
+      const query = supabase
         .from('leads')
         .select(`
           *,
@@ -21,10 +23,6 @@ export default function Leads() {
           reddit_posts (title, body, canonical_url, author, created_at)
         `)
         .order('intent_score', { ascending: false });
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -34,7 +32,7 @@ export default function Leads() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, []);
 
   useEffect(() => {
     fetchLeads();
@@ -54,9 +52,8 @@ export default function Leads() {
     }, []),
   });
 
-  const updateLeadStatus = async (leadId, newStatus) => {
-    const previousLeads = [...leads];
-    setLeads(leads.map(lead => (lead.id === leadId ? { ...lead, status: newStatus } : lead)));
+  const updateLeadStatus = useCallback(async (leadId, newStatus) => {
+    setLeads(prev => prev.map(lead => (lead.id === leadId ? { ...lead, status: newStatus } : lead)));
 
     try {
       const { error } = await supabase
@@ -66,9 +63,13 @@ export default function Leads() {
       if (error) throw error;
     } catch (error) {
       console.error('Error updating lead status:', error);
-      setLeads(previousLeads);
+      fetchLeads();
     }
-  };
+  }, [fetchLeads]);
+
+  const filteredLeads = statusFilter === 'all'
+    ? leads
+    : leads.filter(l => l.status === statusFilter);
 
   const redZoneCount = leads.filter(l => l.intent_score >= 85 && (l.fury_score || 0) >= 75).length;
   const avgIntent = leads.length > 0
@@ -85,12 +86,6 @@ export default function Leads() {
           <div>
             <h1 className="text-3xl font-bold text-slate-100 mb-2">Leads</h1>
             <p className="text-slate-400">High-intent Reddit posts identified by AI</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Filter size={20} className="text-slate-400" />
-            <select className="terminal-input" disabled>
-              <option>All Status</option>
-            </select>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -109,23 +104,53 @@ export default function Leads() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-100 mb-2">Leads</h1>
           <p className="text-slate-400">High-intent Reddit posts identified by AI</p>
         </div>
         <div className="flex items-center gap-3">
-          <Filter size={20} className="text-slate-400" />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="terminal-input"
-          >
-            <option value="all">All Status</option>
-            <option value="new">New</option>
-            <option value="reviewed">Reviewed</option>
-            <option value="ignored">Ignored</option>
-          </select>
+          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                viewMode === 'kanban'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid size={16} />
+              Board
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <List size={16} />
+              List
+            </button>
+          </div>
+
+          {viewMode === 'list' && (
+            <div className="flex items-center gap-2">
+              <Filter size={20} className="text-slate-400" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="terminal-input"
+              >
+                <option value="all">All Status</option>
+                <option value="new">New</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="contacted">Contacted</option>
+                <option value="ignored">Ignored</option>
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -149,25 +174,28 @@ export default function Leads() {
       </div>
 
       {leads.length > 0 ? (
-        <div className="space-y-4">
-          {leads.map((lead) => (
-            <LeadCard key={lead.id} lead={lead} onStatusChange={updateLeadStatus} />
-          ))}
-        </div>
+        viewMode === 'kanban' ? (
+          <KanbanBoard leads={leads} onStatusChange={updateLeadStatus} />
+        ) : (
+          <div className="space-y-4">
+            {filteredLeads.map((lead) => (
+              <LeadCard key={lead.id} lead={lead} onStatusChange={updateLeadStatus} />
+            ))}
+            {filteredLeads.length === 0 && statusFilter !== 'all' && (
+              <EmptyState
+                icon={Target}
+                title={`No ${statusFilter} leads`}
+                description={`You don't have any leads with the status "${statusFilter}".`}
+              />
+            )}
+          </div>
+        )
       ) : (
         <EmptyState
           icon={Target}
-          title={statusFilter !== 'all' ? `No ${statusFilter} leads` : 'No leads yet'}
-          description={
-            statusFilter !== 'all'
-              ? `You don't have any leads with the status "${statusFilter}". Try changing the filter or wait for the automated system to discover new opportunities.`
-              : 'The system is actively scanning Reddit for high-intent posts. Leads will appear here automatically once the lead scoring function runs. Check back in a few minutes or configure your keywords in Settings.'
-          }
-          action={
-            statusFilter !== 'all'
-              ? null
-              : { href: '/settings', label: 'Configure Keywords' }
-          }
+          title="No leads yet"
+          description="The system is actively scanning Reddit for high-intent posts. Leads will appear here automatically once the lead scoring function runs."
+          action={{ href: '/settings', label: 'Configure Keywords' }}
         />
       )}
     </div>

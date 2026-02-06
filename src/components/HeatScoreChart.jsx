@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush } from 'recharts';
 import { BarChart3 } from 'lucide-react';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#06b6d4'];
@@ -23,10 +23,13 @@ export default function HeatScoreChart({ data }) {
 
   return (
     <div className="terminal-card">
-      <h2 className="text-xl font-bold text-slate-100 mb-4">Heat Score Trends</h2>
-      <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold text-slate-100">Heat Score Trends</h2>
+        <p className="text-xs text-slate-500">Drag brush below to zoom</p>
+      </div>
+      <ResponsiveContainer width="100%" height={420}>
+        <LineChart data={data} margin={{ bottom: 30 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
           <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
           <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
           <Tooltip
@@ -34,6 +37,7 @@ export default function HeatScoreChart({ data }) {
               backgroundColor: '#1e293b',
               border: '1px solid #334155',
               borderRadius: '8px',
+              color: '#e2e8f0',
             }}
           />
           <Legend />
@@ -45,8 +49,16 @@ export default function HeatScoreChart({ data }) {
               stroke={COLORS[idx % COLORS.length]}
               strokeWidth={2}
               dot={{ r: 3 }}
+              animationDuration={800}
             />
           ))}
+          <Brush
+            dataKey="date"
+            height={28}
+            stroke="#475569"
+            fill="#1e293b"
+            travellerWidth={10}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>

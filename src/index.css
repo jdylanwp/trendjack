@@ -57,7 +57,18 @@
     @apply bg-blue-900/30 text-blue-400 border border-blue-700;
   }
 
+  .status-contacted {
+    @apply bg-amber-900/30 text-amber-400 border border-amber-700;
+  }
+
   .status-ignored {
     @apply bg-slate-700 text-slate-400 border border-slate-600;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }

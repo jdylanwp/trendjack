@@ -131,6 +131,14 @@ export default function LeadCard({ lead, onStatusChange }) {
               Mark Reviewed
             </button>
           )}
+          {lead.status !== 'contacted' && (
+            <button
+              onClick={() => onStatusChange(lead.id, 'contacted')}
+              className="px-3 py-2 bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 rounded text-sm font-medium transition-colors"
+            >
+              Contacted
+            </button>
+          )}
           {lead.status !== 'ignored' && (
             <button
               onClick={() => onStatusChange(lead.id, 'ignored')}
