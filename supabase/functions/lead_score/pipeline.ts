@@ -13,6 +13,8 @@ import { scoreCandidates } from "./scorer.ts";
 
 const INTENT_THRESHOLD = 75;
 const LOOKBACK_HOURS = 48;
+const SEMANTIC_THRESHOLD = 0.65;
+const SEMANTIC_MAX_RESULTS = 15;
 
 async function fetchKeywords(
   deps: Deps,
@@ -75,6 +77,86 @@ async function fetchRecentPosts(
   }
 
   return (data ?? []) as RedditPost[];
+}
+
+async function fetchSemanticCandidates(
+  deps: Deps,
+  keyword: MonitoredKeyword,
+  existingPostIds: Set<string>
+): Promise<FilteredCandidate[]> {
+  try {
+    const model = new Supabase.ai.Session("gte-small");
+    const queryText = `${keyword.keyword} looking for help recommendations alternatives frustration`;
+    const queryEmbedding = await model.run(queryText, {
+      mean_pool: true,
+      normalize: true,
+    });
+
+    const embedding = Array.from(queryEmbedding as Float32Array);
+
+    const { data: matches, error } = await deps.supabase.rpc(
+      "match_posts_semantic",
+      {
+        query_embedding: embedding,
+        match_threshold: SEMANTIC_THRESHOLD,
+        match_count: SEMANTIC_MAX_RESULTS,
+      }
+    );
+
+    if (error || !matches || matches.length === 0) {
+      return [];
+    }
+
+    const newPostIds = matches
+      .map((m: { reddit_post_id: string }) => m.reddit_post_id)
+      .filter((id: string) => !existingPostIds.has(id));
+
+    if (newPostIds.length === 0) return [];
+
+    const { data: posts, error: postError } = await deps.supabase
+      .from("reddit_posts")
+      .select("*")
+      .in("id", newPostIds);
+
+    if (postError || !posts) return [];
+
+    return (posts as RedditPost[]).map((post) => ({
+      post,
+      keyword,
+      reasons: ["semantic_match"],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchNewsContext(
+  deps: Deps,
+  keyword: string
+): Promise<string> {
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 3);
+
+    const { data: newsItems } = await deps.supabase
+      .from("news_items")
+      .select("title, published_at")
+      .ilike("title", `%${keyword}%`)
+      .gte("published_at", cutoff.toISOString())
+      .order("published_at", { ascending: false })
+      .limit(5);
+
+    if (!newsItems || newsItems.length === 0) return "";
+
+    return newsItems
+      .map(
+        (item: { title: string; published_at: string }, i: number) =>
+          `${i + 1}. ${item.title} (${new Date(item.published_at).toLocaleDateString()})`
+      )
+      .join("\n");
+  } catch {
+    return "";
+  }
 }
 
 async function deduplicateCandidates(
@@ -168,6 +250,7 @@ async function processKeyword(
     timestamp: new Date().toISOString(),
     keyword: keyword.keyword,
     postsAnalyzed: 0,
+    postsSemanticMatched: 0,
     candidatesCreated: 0,
     aiCallsMade: 0,
     leadsCreated: 0,
@@ -183,13 +266,24 @@ async function processKeyword(
 
     const posts = await fetchRecentPosts(deps, keyword.related_subreddit);
     log.postsAnalyzed = posts.length;
-    if (posts.length === 0) {
-      log.errors.push("No recent posts found");
+
+    const regexFiltered = filterPosts(posts, keyword);
+
+    const regexPostIds = new Set(regexFiltered.map((c) => c.post.id));
+    const semanticCandidates = await fetchSemanticCandidates(
+      deps,
+      keyword,
+      regexPostIds
+    );
+    log.postsSemanticMatched = semanticCandidates.length;
+
+    const allCandidates = [...regexFiltered, ...semanticCandidates];
+
+    if (allCandidates.length === 0) {
       return log;
     }
 
-    const filtered = filterPosts(posts, keyword);
-    const novel = await deduplicateCandidates(deps, filtered);
+    const novel = await deduplicateCandidates(deps, allCandidates);
     log.candidatesCreated = novel.length;
 
     if (novel.length === 0) {
@@ -203,11 +297,14 @@ async function processKeyword(
       return log;
     }
 
+    const newsContext = await fetchNewsContext(deps, keyword.keyword);
+
     const scoreResult = await scoreCandidates(
       novel,
       deps,
       userCtx.offerContext,
-      userCtx.limits
+      userCtx.limits,
+      newsContext
     );
     log.aiCallsMade = scoreResult.aiCallsMade;
     log.errors.push(...scoreResult.errors);

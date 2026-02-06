@@ -56,6 +56,7 @@ export interface KeywordLog {
   timestamp: string;
   keyword: string;
   postsAnalyzed: number;
+  postsSemanticMatched: number;
   candidatesCreated: number;
   aiCallsMade: number;
   leadsCreated: number;
@@ -83,6 +84,7 @@ export interface Deps {
     post: RedditPost,
     keyword: string,
     apiKey: string,
-    offerContext: string
+    offerContext: string,
+    newsContext: string
   ) => Promise<AIResponse>;
 }

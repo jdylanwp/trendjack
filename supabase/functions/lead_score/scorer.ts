@@ -16,13 +16,15 @@ interface ScoreResult {
 async function scoreOne(
   candidate: FilteredCandidate,
   deps: Deps,
-  offerContext: string
+  offerContext: string,
+  newsContext: string
 ): Promise<ScoredLead> {
   const aiResponse = await deps.scorePost(
     candidate.post,
     candidate.keyword.keyword,
     deps.openRouterApiKey,
-    offerContext
+    offerContext,
+    newsContext
   );
   return { candidate, aiResponse };
 }
@@ -31,7 +33,8 @@ export async function scoreCandidates(
   candidates: FilteredCandidate[],
   deps: Deps,
   offerContext: string,
-  limits: UserLimits
+  limits: UserLimits,
+  newsContext: string
 ): Promise<ScoreResult> {
   const result: ScoreResult = { scored: [], aiCallsMade: 0, errors: [] };
 
@@ -39,7 +42,7 @@ export async function scoreCandidates(
     return result;
   }
 
-  let availableBudget =
+  const availableBudget =
     limits.max_ai_analyses_per_month - limits.current_ai_analyses;
 
   const toScore = candidates.slice(0, availableBudget);
@@ -48,7 +51,7 @@ export async function scoreCandidates(
   while (i < toScore.length) {
     const batch = toScore.slice(i, i + MAX_CONCURRENCY);
     const settled = await Promise.allSettled(
-      batch.map((c) => scoreOne(c, deps, offerContext))
+      batch.map((c) => scoreOne(c, deps, offerContext, newsContext))
     );
 
     for (const outcome of settled) {

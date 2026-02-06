@@ -4,10 +4,15 @@ import type { Deps, RedditPost, AIResponse } from "./types.ts";
 export function buildPrompt(
   post: RedditPost,
   keyword: string,
-  offerContext: string
+  offerContext: string,
+  newsContext: string
 ): string {
   const businessContext = offerContext
     ? `\n\nYour Business Context (for reference when crafting workarounds):\n${offerContext}`
+    : "";
+
+  const trendingNews = newsContext
+    ? `\n\nRECENT TRENDING NEWS about "${keyword}" (use this for situational awareness when crafting your reply — reference these events if relevant to the user's problem):\n${newsContext}`
     : "";
 
   return `Analyze this Reddit post for sales/marketing intent AND frustration level related to "${keyword}".
@@ -75,16 +80,17 @@ CRITICAL INSTRUCTIONS FOR "suggested_reply" (STRATEGIC INFILTRATION):
 
    Example: "Good question, curious to see what others suggest." or "SKIP - Low priority lead"
 
-REMEMBER: The goal is NOT to pitch. The goal is to get them to DM YOU by demonstrating value and creating curiosity. Angry users convert fastest when they feel like they discovered YOU, not the other way around.${businessContext}`;
+REMEMBER: The goal is NOT to pitch. The goal is to get them to DM YOU by demonstrating value and creating curiosity. Angry users convert fastest when they feel like they discovered YOU, not the other way around.${businessContext}${trendingNews}`;
 }
 
 async function scorePostViaOpenRouter(
   post: RedditPost,
   keyword: string,
   apiKey: string,
-  offerContext: string
+  offerContext: string,
+  newsContext: string
 ): Promise<AIResponse> {
-  const prompt = buildPrompt(post, keyword, offerContext);
+  const prompt = buildPrompt(post, keyword, offerContext, newsContext);
 
   const response = await fetch(
     "https://openrouter.ai/api/v1/chat/completions",
